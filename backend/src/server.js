@@ -32,13 +32,16 @@ const getCategoryEmoji = (category) => {
   return '✨';
 };
 
-// --- AI HELPERS (ПРЯМОЙ ЗАПРОС ЧЕРЕЗ ЗЕРКАЛО) ---
+// --- AI HELPERS (УМНЫЙ ПЕРЕБОР ЗЕРКАЛ И МОДЕЛЕЙ) ---
 const analyzeText = async (text, currency = 'UZS') => {
   if (!apiKey) throw new Error("API Key is missing on server");
 
-  // Мы используем публичное зеркало nomisec.win, чтобы обойти блок Google в РФ/Timeweb
-  // Это работает как обычный сайт, VPN не нужен.
-  const mirrorUrl = "https://gemini.nomisec.win"; 
+  // Список адресов для подключения (Зеркала + Официальный)
+  const baseUrls = [
+    "https://gemini.nomisec.win", // Зеркало 1
+    "https://api.rnpp.cc",        // Зеркало 2
+    "https://generativelanguage.googleapis.com" // Официальный (на случай, если заработает)
+  ];
   
   const modelsToTry = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-pro"];
   let lastError = null;
@@ -53,33 +56,36 @@ const analyzeText = async (text, currency = 'UZS') => {
     Return ONLY raw JSON: {"amount": 100, "category": "Еда", "type": "expense", "currency": "UZS", "description": "text"}
   `;
 
-  for (const model of modelsToTry) {
-    try {
-      console.log(`Trying model ${model} via Mirror...`);
-      
-      // Прямой HTTP запрос (Bypass library issues)
-      const url = `${mirrorUrl}/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      
-      const response = await axios.post(url, {
-        contents: [{ parts: [{ text: promptText }] }]
-      }, {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 10000 // 10 секунд тайм-аут
-      });
+  // Двойной цикл: перебираем Зеркала, а внутри них - Модели
+  for (const baseUrl of baseUrls) {
+    for (const model of modelsToTry) {
+      try {
+        console.log(`Trying ${baseUrl} with model ${model}...`);
+        
+        const url = `${baseUrl}/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        
+        const response = await axios.post(url, {
+          contents: [{ parts: [{ text: promptText }] }]
+        }, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 15000 // 15 секунд тайм-аут
+        });
 
-      let textResponse = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!textResponse) throw new Error("Empty response from Gemini");
+        let textResponse = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!textResponse) throw new Error("Empty response from Gemini");
 
-      textResponse = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
-      return JSON.parse(textResponse);
+        textResponse = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(textResponse);
 
-    } catch (e) {
-      console.warn(`⚠️ Model ${model} failed: ${e.message}`);
-      lastError = e;
+      } catch (e) {
+        const errMsg = e.response?.data?.error?.message || e.message;
+        console.warn(`⚠️ Failed ${baseUrl}/${model}: ${errMsg}`);
+        lastError = e;
+      }
     }
   }
   
-  throw new Error(`All mirrors failed. Server IP might be blocked even for mirrors. Last error: ${lastError?.message}`);
+  throw new Error(`All mirrors and models failed. Last error: ${lastError?.message}`);
 };
 
 // --- BOT LOGIC ---
@@ -92,7 +98,7 @@ bot.start(async (ctx) => {
       create: { telegramId: BigInt(id), firstName: first_name, username, currency: 'UZS' }
     });
     
-    ctx.reply('Привет! Я обновил "мозги" и работаю через зеркало. Напиши: "Такси 20к"', 
+    ctx.reply('Привет! Я использую сеть зеркал для надежности. Напиши: "Такси 20к"', 
       Markup.keyboard([
         [Markup.button.webApp('📊 Открыть Статистику', process.env.WEBAPP_URL)]
       ]).resize()
@@ -129,7 +135,7 @@ bot.on('text', async (ctx) => {
 
   } catch (e) {
     console.error("Bot Error:", e);
-    ctx.reply(`❌ Ошибка (Mirror): ${e.message}`);
+    ctx.reply(`❌ Ошибка соединения: ${e.message}`);
   }
 });
 
