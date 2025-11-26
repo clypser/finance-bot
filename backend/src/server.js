@@ -9,7 +9,7 @@ const app = express();
 const prisma = new PrismaClient();
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
-// Проверка ключа при старте (для логов)
+// Проверка ключа
 const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) {
   console.error("⚠️ WARNING: GEMINI_API_KEY is missing!");
@@ -17,7 +17,6 @@ if (!apiKey) {
   console.log(`✅ Gemini API Key found (starts with ${apiKey.substring(0, 4)}...)`);
 }
 
-// Инициализация Gemini
 const genAI = new GoogleGenerativeAI(apiKey || "");
 
 app.use(cors());
@@ -39,35 +38,45 @@ const getCategoryEmoji = (category) => {
   return '✨';
 };
 
-// --- AI HELPERS ---
+// --- AI HELPERS (Умный перебор моделей) ---
 const analyzeText = async (text, currency = 'UZS') => {
-  try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+  // Список моделей для пробы (от новой к старой)
+  const modelsToTry = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-pro", "gemini-1.0-pro"];
+  let lastError = null;
 
-    const prompt = `
-      Analyze this financial text: "${text}".
-      User's default currency: ${currency}.
-      Rules:
-      1. "25k", "25к" = 25000.
-      2. Category in RUSSIAN (e.g., "Еда", "Такси").
-      3. Type: "expense" or "income".
+  const prompt = `
+    Analyze this financial text: "${text}".
+    User's default currency: ${currency}.
+    Rules:
+    1. "25k", "25к" = 25000.
+    2. Category in RUSSIAN (e.g., "Еда", "Такси").
+    3. Type: "expense" or "income".
+    
+    Return ONLY raw JSON without markdown formatting. Example: {"amount": 100, "category": "Еда", "type": "expense", "currency": "UZS", "description": "text"}
+  `;
+
+  // Пробуем модели по очереди
+  for (const modelName of modelsToTry) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      let textResponse = response.text();
       
-      Return ONLY raw JSON without markdown formatting. Example: {"amount": 100, "category": "Еда", "type": "expense", "currency": "UZS", "description": "text"}
-    `;
-
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    let textResponse = response.text();
-    
-    // Очистка от лишних символов markdown, если Gemini их добавит
-    textResponse = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
-    
-    return JSON.parse(textResponse);
-  } catch (e) {
-    console.error("Gemini Error Details:", e);
-    // Пробрасываем реальный текст ошибки для вывода пользователю
-    throw new Error(`Gemini Error: ${e.message || e.toString()}`);
+      // Очистка JSON
+      textResponse = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+      return JSON.parse(textResponse);
+      
+    } catch (e) {
+      console.warn(`⚠️ Model ${modelName} failed, trying next... Error: ${e.message}`);
+      lastError = e;
+      // Если модель не найдена, пробуем следующую. Если ошибка в другом - всё равно пробуем следующую на всякий случай.
+    }
   }
+
+  // Если ничего не помогло
+  console.error("All Gemini models failed:", lastError);
+  throw new Error(`All models failed. Last error: ${lastError.message}`);
 };
 
 // --- BOT LOGIC ---
@@ -80,7 +89,7 @@ bot.start(async (ctx) => {
       create: { telegramId: BigInt(id), firstName: first_name, username, currency: 'UZS' }
     });
     
-    ctx.reply('Привет! Я перешел на Gemini AI. Напиши трату: "Такси 20к".', 
+    ctx.reply('Привет! Я обновился и теперь сам ищу работающую модель AI. Напиши трату: "Такси 20к".', 
       Markup.keyboard([
         [Markup.button.webApp('📊 Открыть Статистику', process.env.WEBAPP_URL)]
       ]).resize()
@@ -97,9 +106,6 @@ bot.on('text', async (ctx) => {
     
     if (!user) return ctx.reply('Нажми /start');
     
-    // Убрали typing, чтобы не зависало
-    // ctx.sendChatAction('typing');
-
     const result = await analyzeText(ctx.message.text, user.currency);
     
     await prisma.transaction.create({
@@ -120,9 +126,8 @@ bot.on('text', async (ctx) => {
 
   } catch (e) {
     console.error("Transaction Error Full:", e);
-    // Выводим реальную ошибку пользователю, чтобы понять причину
     ctx.reply(`❌ Ошибка: ${e.message}`);
-  } 
+  }
 });
 
 bot.launch().catch(err => console.error("Bot launch error:", err));
