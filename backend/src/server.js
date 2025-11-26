@@ -1,17 +1,36 @@
 const express = require('express');
 const { Telegraf, Markup } = require('telegraf');
+const { OpenAI } = require('openai');
 const { PrismaClient } = require('@prisma/client');
 const cors = require('cors');
-const axios = require('axios'); // Используем axios для прямых запросов
+const { HttpsProxyAgent } = require('https-proxy-agent');
 const { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth } = require('date-fns');
 
 const app = express();
 const prisma = new PrismaClient();
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
-// Проверка ключа
-const apiKey = process.env.GEMINI_API_KEY;
-if (!apiKey) console.error("⚠️ WARNING: GEMINI_API_KEY is missing!");
+// === НАСТРОЙКА OPENAI И ПРОКСИ ===
+const apiKey = process.env.OPENAI_API_KEY;
+const proxyUrl = process.env.PROXY_URL; 
+
+let openai;
+
+if (!apiKey) {
+  console.error("⚠️ WARNING: OPENAI_API_KEY is missing!");
+}
+
+if (proxyUrl) {
+  console.log(`🌐 Using Proxy for OpenAI: ${proxyUrl}`);
+  const agent = new HttpsProxyAgent(proxyUrl);
+  openai = new OpenAI({
+    apiKey: apiKey || "",
+    httpAgent: agent // Заставляем OpenAI идти через прокси
+  });
+} else {
+  console.log("⚠️ No proxy detected. Connecting to OpenAI directly (might be blocked in RU).");
+  openai = new OpenAI({ apiKey: apiKey || "" });
+}
 
 app.use(cors());
 app.use(express.json());
@@ -32,60 +51,40 @@ const getCategoryEmoji = (category) => {
   return '✨';
 };
 
-// --- AI HELPERS (УМНЫЙ ПЕРЕБОР ЗЕРКАЛ И МОДЕЛЕЙ) ---
+// --- AI HELPERS ---
 const analyzeText = async (text, currency = 'UZS') => {
-  if (!apiKey) throw new Error("API Key is missing on server");
+  try {
+    if (!apiKey) throw new Error("API Key missing");
 
-  // Список адресов для подключения (Зеркала + Официальный)
-  const baseUrls = [
-    "https://gemini.nomisec.win", // Зеркало 1
-    "https://api.rnpp.cc",        // Зеркало 2
-    "https://generativelanguage.googleapis.com" // Официальный (на случай, если заработает)
-  ];
-  
-  const modelsToTry = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-pro"];
-  let lastError = null;
+    const prompt = `
+      Analyze this financial text: "${text}".
+      User's default currency: ${currency}.
+      Rules:
+      1. "25k", "25к" = 25000.
+      2. Category in RUSSIAN (e.g., "Еда", "Такси").
+      3. Type: "expense" or "income".
+      
+      Return ONLY valid JSON: {"amount": 100, "category": "Еда", "type": "expense", "currency": "UZS", "description": "text"}
+    `;
 
-  const promptText = `
-    Analyze this financial text: "${text}".
-    User's default currency: ${currency}.
-    Rules:
-    1. "25k", "25к" = 25000.
-    2. Category in RUSSIAN (e.g., "Еда", "Такси").
-    3. Type: "expense" or "income".
-    Return ONLY raw JSON: {"amount": 100, "category": "Еда", "type": "expense", "currency": "UZS", "description": "text"}
-  `;
+    const completion = await openai.chat.completions.create({
+      messages: [
+        { role: "system", content: "You are a financial assistant. Output strictly JSON." },
+        { role: "user", content: prompt }
+      ],
+      model: "gpt-3.5-turbo", // Используем 3.5, она дешевле и доступнее
+      response_format: { type: "json_object" }
+    });
 
-  // Двойной цикл: перебираем Зеркала, а внутри них - Модели
-  for (const baseUrl of baseUrls) {
-    for (const model of modelsToTry) {
-      try {
-        console.log(`Trying ${baseUrl} with model ${model}...`);
-        
-        const url = `${baseUrl}/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        
-        const response = await axios.post(url, {
-          contents: [{ parts: [{ text: promptText }] }]
-        }, {
-          headers: { 'Content-Type': 'application/json' },
-          timeout: 15000 // 15 секунд тайм-аут
-        });
-
-        let textResponse = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!textResponse) throw new Error("Empty response from Gemini");
-
-        textResponse = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
-        return JSON.parse(textResponse);
-
-      } catch (e) {
-        const errMsg = e.response?.data?.error?.message || e.message;
-        console.warn(`⚠️ Failed ${baseUrl}/${model}: ${errMsg}`);
-        lastError = e;
-      }
-    }
+    const content = completion.choices[0].message.content;
+    if (!content) throw new Error("Empty response from OpenAI");
+    
+    return JSON.parse(content);
+  } catch (e) {
+    console.error("OpenAI Error:", e);
+    // Выводим подробную ошибку, чтобы понять, заблокировали нас или нет
+    throw new Error(`OpenAI Error: ${e.message || e.toString()}`);
   }
-  
-  throw new Error(`All mirrors and models failed. Last error: ${lastError?.message}`);
 };
 
 // --- BOT LOGIC ---
@@ -98,7 +97,7 @@ bot.start(async (ctx) => {
       create: { telegramId: BigInt(id), firstName: first_name, username, currency: 'UZS' }
     });
     
-    ctx.reply('Привет! Я использую сеть зеркал для надежности. Напиши: "Такси 20к"', 
+    ctx.reply('Привет! Я переключился обратно на OpenAI (GPT). Напиши трату: "Такси 20к".', 
       Markup.keyboard([
         [Markup.button.webApp('📊 Открыть Статистику', process.env.WEBAPP_URL)]
       ]).resize()
@@ -134,8 +133,8 @@ bot.on('text', async (ctx) => {
     ctx.reply(`✅ ${sign}${result.amount.toLocaleString()} ${result.currency} | ${emoji} ${result.category}`);
 
   } catch (e) {
-    console.error("Bot Error:", e);
-    ctx.reply(`❌ Ошибка соединения: ${e.message}`);
+    console.error("Transaction Error Full:", e);
+    ctx.reply(`❌ Ошибка: ${e.message}`);
   }
 });
 
