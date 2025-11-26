@@ -3,45 +3,36 @@ const { Telegraf, Markup } = require('telegraf');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { PrismaClient } = require('@prisma/client');
 const cors = require('cors');
-// Добавляем HttpsProxyAgent для обхода блокировок (если понадобится)
-const { HttpsProxyAgent } = require('https-proxy-agent');
 const { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth } = require('date-fns');
 
 const app = express();
 const prisma = new PrismaClient();
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
-// === НАСТРОЙКА КЛЮЧА И ПРОКСИ ===
+// === НАСТРОЙКА ЗЕРКАЛА (MIRROR) ===
 const apiKey = process.env.GEMINI_API_KEY;
-// Если есть переменная PROXY_URL, используем её (например: http://user:pass@ip:port)
-// Для бесплатных прокси часто просто http://ip:port
-const proxyUrl = process.env.PROXY_URL; 
 
-let genAI;
-if (proxyUrl) {
-    const agent = new HttpsProxyAgent(proxyUrl);
-    // Подключаем прокси через fetch (особенность библиотеки Google)
-    genAI = new GoogleGenerativeAI(apiKey || "", { fetch: (url, init) => fetch(url, { ...init, agent }) });
-    console.log(`🌐 Using Proxy: ${proxyUrl}`);
+// Функция-перехватчик. Она меняет адрес Google на адрес Зеркала "на лету".
+const customFetch = (url, options) => {
+  const urlStr = url.toString();
+  // Если запрос идет к Google, подменяем домен
+  // gemini.nomisec.win - это публичное зеркало
+  const newUrl = urlStr.replace(
+    'generativelanguage.googleapis.com',
+    'gemini.nomisec.win'
+  );
+  console.log(`🌐 Proxying request: ${newUrl}`);
+  return fetch(newUrl, options);
+};
+
+if (!apiKey) {
+  console.error("⚠️ WARNING: GEMINI_API_KEY is missing!");
 } else {
-    genAI = new GoogleGenerativeAI(apiKey || "");
+  console.log(`✅ Gemini API Key found (starts with ${apiKey.substring(0, 4)}...)`);
 }
 
-if (!apiKey) console.error("⚠️ WARNING: GEMINI_API_KEY is missing!");
-
-// === ДИАГНОСТИКА ПРИ ЗАПУСКЕ ===
-// Проверяем, видит ли сервер модели Google
-(async () => {
-    try {
-        console.log("🔍 Checking Google AI availability...");
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        // Пробуем получить список моделей (если библиотека поддерживает) или просто тестовый запрос
-        // Но проще просто сообщить, что мы готовы
-        console.log("✅ Google AI Client initialized. Waiting for requests...");
-    } catch (e) {
-        console.error("❌ Google AI Init Error:", e.message);
-    }
-})();
+// Инициализируем Gemini с нашим перехватчиком
+const genAI = new GoogleGenerativeAI(apiKey || "", { fetch: customFetch });
 
 app.use(cors());
 app.use(express.json());
@@ -67,7 +58,7 @@ const analyzeText = async (text, currency = 'UZS') => {
   if (!apiKey) throw new Error("API Key missing");
 
   // Список моделей для перебора
-  const modelsToTry = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro"];
+  const modelsToTry = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-pro"];
   let lastError = null;
 
   const prompt = `
@@ -95,7 +86,7 @@ const analyzeText = async (text, currency = 'UZS') => {
     }
   }
   
-  throw new Error(`Google blocked connection from this server IP. Try using a Proxy. Error: ${lastError?.message}`);
+  throw new Error(`All models failed. Last error: ${lastError?.message}`);
 };
 
 // --- BOT LOGIC ---
@@ -107,7 +98,7 @@ bot.start(async (ctx) => {
       update: { firstName: first_name, username },
       create: { telegramId: BigInt(id), firstName: first_name, username, currency: 'UZS' }
     });
-    ctx.reply('Привет! Финансовый бот готов к работе. Напиши: "Такси 20к"', 
+    ctx.reply('Привет! Я использую зеркало для обхода блокировок. Напиши: "Такси 20к"', 
       Markup.keyboard([[Markup.button.webApp('📊 Открыть Статистику', process.env.WEBAPP_URL)]]).resize()
     );
   } catch (e) { console.error("Start Error:", e); }
