@@ -122,7 +122,7 @@ bot.on('text', async (ctx) => {
     console.error("Transaction Error Full:", e);
     // Выводим реальную ошибку пользователю, чтобы понять причину
     ctx.reply(`❌ Ошибка: ${e.message}`);
-  }
+  } 
 });
 
 bot.launch().catch(err => console.error("Bot launch error:", err));
