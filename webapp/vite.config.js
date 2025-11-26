@@ -7,8 +7,7 @@ export default defineConfig({
   server: {
     host: true,
     port: 80,
-    // Разрешаем вашу ссылку ngrok для режима разработки
-    allowedHosts: ['uncinate-tonelessly-mariyah.ngrok-free.dev'],
+    allowedHosts: true, // Разрешаем любые домены (включая ваш новый)
     proxy: {
       '/stats': 'http://backend:3000',
       '/transaction': 'http://backend:3000',
@@ -19,8 +18,7 @@ export default defineConfig({
   preview: {
     host: true,
     port: 80,
-    // Разрешаем вашу ссылку ngrok для режима preview (который в Docker)
-    allowedHosts: ['uncinate-tonelessly-mariyah.ngrok-free.dev'],
+    allowedHosts: true, 
     proxy: {
       '/stats': 'http://backend:3000',
       '/transaction': 'http://backend:3000',
