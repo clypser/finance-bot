@@ -39,7 +39,7 @@ services:
       PORT: 3000
       # 👇 ВСТАВЬТЕ СЮДА ВАШИ НАСТОЯЩИЕ КЛЮЧИ!
       TELEGRAM_BOT_TOKEN: "8552249372:AAFXHTK1UDmT-EFTMdxm60QuFJ0qR620omg"
-      OPENAI_API_KEY: "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"
+      GEMINI_API_KEY: "AIzaSyCU5jugVnT6vseED8xLFVKNI5ARKgSkopo"
       # 👇 ВАШ НОВЫЙ ДОМЕН (с https://)
       WEBAPP_URL: "https://loomybot.ru" 
     ports:
