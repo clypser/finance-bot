@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: finance_bot_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: finance_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    container_name: finance_bot_backend
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: "postgresql://postgres:password@db:5432/finance_db?schema=public"
+      PORT: 3000
+      # REPLACE WITH YOUR REAL TOKEN
+      TELEGRAM_BOT_TOKEN: "8552249372:AAFl1czLtrlzf0HhqbCggaTi62ldxvUn4qQ"
+      OPENAI_API_KEY: "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"
+      # REPLACE WITH YOUR NGROK URL
+      WEBAPP_URL: "https://uncinate-tonelessly-mariyah.ngrok-free.dev"
+    ports:
+      - "3000:3000"
+    command: sh -c "npx prisma db push && node src/server.js"
+
+  webapp:
+    build: ./webapp
+    container_name: finance_bot_webapp
+    ports:
+      - "80:80"
+
+volumes:
+  postgres_data:
+
