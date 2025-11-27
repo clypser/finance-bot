@@ -348,7 +348,6 @@ const MainApp = () => {
   );
 
   const AddModal = () => (
-      // ИЗМЕНЕНИЕ ЗДЕСЬ: items-center вместо items-end
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
           <div className="bg-[#111111] w-full max-w-sm rounded-[32px] border border-white/10 p-6 space-y-6">
               <div className="flex justify-between items-center">
