@@ -72,16 +72,17 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
       Input text: "${text}"
       User Currency: "${userCurrency}"
       
-      Extract:
-      - amount (number)
-      - currency (string, default to ${userCurrency})
-      - category (string, Russian)
-      - type ("income" or "expense")
+      RULES:
+      1. Extract Amount (number). 
+         IMPORTANT: "k" or "к" means *1000. Examples: "200к" = 200000, "5k" = 5000.
+      2. Extract Currency (string, default to ${userCurrency}).
+      3. Extract Category (string, Russian).
+      4. Determine Type ("income" or "expense").
 
       Categories: [Еда, Продукты, Такси, Транспорт, Зарплата, Стипендия, Дивиденды, Вклады, Здоровье, Развлечения, Кафе, Связь, Дом, Одежда, Техника, Табак, Прочее]
 
       Output JSON ONLY. No markdown.
-      Example: {"amount": 200, "currency": "UZS", "category": "Еда", "type": "expense"}
+      Example: {"amount": 200000, "currency": "UZS", "category": "Еда", "type": "expense"}
     `;
 
     const completion = await openai.chat.completions.create({
@@ -92,7 +93,7 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
     });
 
     const content = completion.choices[0].message.content;
-    console.log("AI Raw Response:", content); // Логируем ответ для проверки
+    console.log("AI Raw Response:", content); 
     return JSON.parse(content);
   } catch (e) {
     console.error("AI Error:", e);
@@ -153,12 +154,9 @@ bot.on('text', async (ctx) => {
     
     ctx.sendChatAction('typing');
 
-    // Берем валюту из профиля или ставим UZS по умолчанию, чтобы AI не сходил с ума
     const currentCurrency = user.currency || 'UZS';
     const result = await analyzeText(ctx.message.text, currentCurrency);
     
-    // === ОТЛАДКА ===
-    // Если суммы нет, показываем, что именно вернул AI, чтобы понять причину
     if (!result || !result.amount) {
         return ctx.reply(`⚠️ Не вижу сумму. Ответ AI:\n\n${JSON.stringify(result, null, 2)}\n\nПопробуйте написать: "200 ${currentCurrency}"`);
     }
