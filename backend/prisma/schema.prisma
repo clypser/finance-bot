@@ -1,6 +1,5 @@
 generator client {
   provider = "prisma-client-js"
-  // Добавляем поддержку Alpine Linux (linux-musl) и локальной системы для работы Docker
   binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
@@ -14,8 +13,13 @@ model User {
   telegramId   BigInt        @unique
   firstName    String?
   username     String?
-  currency     String        @default("UZS") // UZS, KZT, RUB, USD
+  currency     String        @default("UZS")
   createdAt    DateTime      @default(now())
+  
+  // Новые поля для подписки
+  isPro        Boolean       @default(false)
+  proExpiresAt DateTime?     // Дата окончания подписки
+  
   transactions Transaction[]
   budgets      Budget[]
   debts        Debt[]
@@ -26,7 +30,7 @@ model Transaction {
   amount      Float
   currency    String
   category    String
-  type        String   // expense, income
+  type        String
   description String?
   date        DateTime @default(now())
   userId      Int
@@ -48,7 +52,7 @@ model Debt {
   personName  String
   amount      Float
   currency    String
-  type        String    // lent (дал в долг), borrowed (взял в долг)
+  type        String
   dueDate     DateTime?
   isPaid      Boolean   @default(false)
   userId      Int

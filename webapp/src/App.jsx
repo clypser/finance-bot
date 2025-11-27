@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Wallet, PieChart as PieIcon, Plus, ArrowUpRight, ArrowDownLeft, Target, Crown, X, CreditCard, Banknote, BarChart3, ChevronRight, Trash2, Calendar, FileText, Loader2 } from 'lucide-react';
+import { Wallet, PieChart as PieIcon, Plus, ArrowUpRight, ArrowDownLeft, Target, Crown, X, CreditCard, Banknote, BarChart3, ChevronRight, Trash2, Calendar, FileText, Zap } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 const API_URL = ''; 
@@ -17,7 +17,7 @@ const shimmerStyle = `
   }
 `;
 
-// === СПИСКИ КАТЕГОРИЙ (РУС) ===
+// === СПИСКИ КАТЕГОРИЙ ===
 const EXPENSE_CATEGORIES = [
   'Продукты', 'Еда вне дома', 'Такси', 'Транспорт', 'Дом', 
   'ЖКУ', 'Связь', 'Здоровье', 'Красота', 'Спорт', 
@@ -171,6 +171,7 @@ const MainApp = () => {
   const [period, setPeriod] = useState('month');
   const [data, setData] = useState({ transactions: [], chartData: [], total: 0 });
   
+  // Валюта из localStorage
   const [currency, setCurrency] = useState(() => {
       if (typeof window !== 'undefined' && window.localStorage) {
           return localStorage.getItem('userCurrency') || 'UZS';
@@ -181,6 +182,10 @@ const MainApp = () => {
   const [loading, setLoading] = useState(false);
   const [userName, setUserName] = useState('Друг');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  
+  // Данные о подписке
+  const [isPro, setIsPro] = useState(false);
+  const [limitRemaining, setLimitRemaining] = useState(null);
 
   useEffect(() => {
     const tg = window.Telegram?.WebApp;
@@ -216,6 +221,11 @@ const MainApp = () => {
           setCurrency(result.currency);
           localStorage.setItem('userCurrency', result.currency);
       }
+      
+      // Обновляем статус подписки
+      setIsPro(result.isPro);
+      setLimitRemaining(result.limitRemaining);
+
     } catch (err) {
       console.log("No data or offline");
       // Оставляем старые данные, если есть, или пустые
@@ -243,7 +253,7 @@ const MainApp = () => {
   const handleAddTransaction = async (formData) => {
       try {
           const userId = getTelegramUserId();
-          await fetch(`${API_URL}/transaction/add`, {
+          const response = await fetch(`${API_URL}/transaction/add`, {
               method: 'POST',
               headers: { 
                   'x-telegram-id': userId,
@@ -251,6 +261,12 @@ const MainApp = () => {
               },
               body: JSON.stringify(formData)
           });
+          
+          if (response.status === 403) {
+              alert("Лимит записей превышен! Купите Pro версию в боте.");
+              return;
+          }
+          
           setIsAddModalOpen(false);
           fetchStats();
       } catch (e) {
@@ -263,15 +279,6 @@ const MainApp = () => {
       fetchStats();
     }
   }, [activeTab, period]);
-
-  // --- ЭКРАН ЗАГРУЗКИ ---
-  if (loading && data.transactions.length === 0) {
-      return (
-          <div className="min-h-screen bg-black flex items-center justify-center">
-              <Loader2 className="text-[#00E08F] animate-spin" size={48} />
-          </div>
-      );
-  }
 
   // --- ГЛАВНАЯ СТРАНИЦА ---
   const StatsView = () => {
@@ -289,63 +296,56 @@ const MainApp = () => {
                 <X size={24} />
             </button>
             <div className="text-center">
-                <h1 className="text-lg font-bold text-white tracking-wide">Loomy AI</h1>
+                <h1 className="text-lg font-bold text-white tracking-wide">Theo AI</h1>
             </div>
             <div className="w-8"></div>
         </div>
 
         <div className="text-center mt-4 mb-6">
             <h2 className="text-[32px] font-extrabold text-white mb-1 leading-tight">Привет, {userName}!</h2>
-            <p className="text-gray-500 text-sm font-medium">Твой умный трекер расходов</p>
+            <p className="text-gray-500 text-sm font-medium">Ваш умный трекер расходов</p>
         </div>
 
-        {/* Желтый переливающийся баннер */}
-        <div className="relative overflow-hidden rounded-[32px] p-5 shadow-lg animate-shimmer cursor-pointer active:scale-95 transition-transform">
-            <div className="relative z-10 flex items-center gap-4">
-                <div className="bg-white/25 p-2.5 rounded-2xl backdrop-blur-md border border-white/20">
-                    <Crown className="text-black" size={26} strokeWidth={2.5} />
-                </div>
-                <div>
-                    <h3 className="font-extrabold text-black text-[15px] leading-tight">Loomy AI Pro — 7 дней бесплатно</h3>
-                    <p className="text-black/70 text-[11px] font-bold mt-0.5 uppercase tracking-wide">Без карты • Авто-отмена</p>
+        {/* Баннер PRO */}
+        {!isPro ? (
+            <div className="relative overflow-hidden rounded-[32px] p-5 shadow-lg animate-shimmer cursor-pointer active:scale-95 transition-transform"
+                 onClick={() => window.Telegram?.WebApp?.close()}> {/* Закрыть апп, чтобы юзер купил в боте */}
+                <div className="relative z-10 flex items-center gap-4">
+                    <div className="bg-white/25 p-2.5 rounded-2xl backdrop-blur-md border border-white/20">
+                        <Crown className="text-black" size={26} strokeWidth={2.5} />
+                    </div>
+                    <div>
+                        <h3 className="font-extrabold text-black text-[15px] leading-tight">Купить Theo AI Pro</h3>
+                        <p className="text-black/70 text-[11px] font-bold mt-0.5 uppercase tracking-wide">
+                           Осталось записей: {limitRemaining !== null ? limitRemaining : '...'}
+                        </p>
+                    </div>
                 </div>
             </div>
-        </div>
+        ) : (
+             <div className="bg-[#111111] rounded-[32px] p-5 border border-white/10 flex items-center gap-4">
+                 <div className="bg-green-500/10 p-2.5 rounded-2xl">
+                     <Zap className="text-green-500" size={26} strokeWidth={2.5} />
+                 </div>
+                 <div>
+                    <h3 className="font-bold text-white text-sm">Pro Активен</h3>
+                    <p className="text-gray-500 text-xs">Безлимитный доступ</p>
+                 </div>
+             </div>
+        )}
 
         {/* Карточка баланса */}
         <div className="bg-[#111111] rounded-[32px] p-8 text-center border border-white/10 shadow-2xl relative overflow-hidden">
             <p className="text-gray-500 text-[11px] font-bold mb-3 uppercase tracking-widest">Текущий баланс</p>
             <h2 className="text-[40px] font-black text-white tracking-tighter flex justify-center items-center gap-3">
-                {displayBalance !== 0 && (
-                    <span className="relative flex h-3 w-3">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-                    </span>
-                )}
                 {currency} {displayBalance.toLocaleString()}
             </h2>
         </div>
 
-        {/* Сводка за месяц */}
+        {/* Сводка */}
         <div className="bg-[#111111] rounded-[32px] p-6 border border-white/10">
-            <div className="flex justify-between items-center mb-6">
-                <p className="text-gray-500 text-[11px] font-bold uppercase tracking-widest">Статистика</p>
-                <div className="flex bg-black rounded-lg p-0.5 border border-white/5">
-                    {['week', 'month'].map(p => (
-                        <button 
-                            key={p}
-                            onClick={() => setPeriod(p)}
-                            className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all ${period === p ? 'bg-white text-black' : 'text-gray-500'}`}
-                        >
-                            {p === 'week' ? 'Неделя' : 'Месяц'}
-                        </button>
-                    ))}
-                </div>
-            </div>
-            
             <div className="flex justify-between items-start mb-2 px-2 relative">
                 <div className="absolute left-1/2 top-0 bottom-0 w-[1px] bg-white/10 -translate-x-1/2"></div>
-
                 <div className="text-center w-1/2 pr-4">
                     <p className="text-xl font-bold text-white mb-1.5 tracking-tight">-{displayExpense.toLocaleString()}</p>
                     <div className="flex items-center justify-center gap-1.5 text-red-500 text-[10px] font-black uppercase tracking-wider bg-red-500/10 py-1 px-2 rounded-lg mx-auto w-max">
@@ -359,29 +359,18 @@ const MainApp = () => {
                     </div>
                 </div>
             </div>
-
-            <div className="text-center pt-6 border-t border-white/10 mt-6">
-                 <p className={`text-3xl font-black mb-1 tracking-tight ${displayBalance >= 0 ? 'text-white' : 'text-red-500'}`}>
-                    {displayBalance > 0 ? '+' : ''}{displayBalance.toLocaleString()}
-                 </p>
-                 <p className="text-gray-500 text-[11px] font-bold uppercase tracking-wide">Чистый результат • {currency}</p>
-            </div>
         </div>
 
-        {/* Кнопки навигации */}
+        {/* Кнопки */}
         <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-                <button 
-                    onClick={() => setActiveTab('list')}
-                    className="bg-[#111111] rounded-[28px] p-5 flex flex-col items-center justify-center gap-4 border border-white/10 active:bg-[#1a1a1a] transition-all h-36 relative overflow-hidden group"
-                >
+                <button onClick={() => setActiveTab('list')} className="bg-[#111111] rounded-[28px] p-5 flex flex-col items-center justify-center gap-4 border border-white/10 active:bg-[#1a1a1a] transition-all h-36">
                     <div className="w-14 h-14 rounded-[20px] flex items-center justify-center bg-black border border-white/5 shadow-[0_0_20px_rgba(34,197,94,0.1)]">
                         <Wallet className="text-green-500" size={28} strokeWidth={2} />
                     </div>
                     <span className="text-white font-bold text-sm tracking-wide">Транзакции</span>
                 </button>
-
-                <button className="bg-[#111111] rounded-[28px] p-5 flex flex-col items-center justify-center gap-4 border border-white/10 active:bg-[#1a1a1a] transition-all h-36 relative overflow-hidden group">
+                <button className="bg-[#111111] rounded-[28px] p-5 flex flex-col items-center justify-center gap-4 border border-white/10 active:bg-[#1a1a1a] transition-all h-36">
                     <div className="w-14 h-14 rounded-[20px] flex items-center justify-center bg-black border border-white/5 shadow-[0_0_20px_rgba(249,115,22,0.1)]">
                         <Banknote className="text-orange-500" size={28} strokeWidth={2} />
                     </div>
@@ -396,45 +385,28 @@ const MainApp = () => {
                 <span className="text-white font-bold text-sm tracking-wide">Аналитика</span>
             </button>
         </div>
-
-        {/* Недавняя активность */}
+        
         <div className="pt-2">
-            <div className="flex justify-between items-center mb-4 px-2">
-                <h3 className="text-xl font-bold text-white">Недавняя активность</h3>
-                <button onClick={() => setActiveTab('list')} className="text-green-500 text-xs font-bold uppercase tracking-wider flex items-center gap-1 active:opacity-70">
-                    Смотреть все <ChevronRight size={14} />
-                </button>
-            </div>
-
-            <div className="space-y-3">
-                {data.transactions.length === 0 ? (
-                    <div className="bg-[#111111] rounded-[24px] p-8 text-center border border-white/10">
-                        <p className="text-gray-500 text-sm font-medium">Пока нет операций</p>
-                    </div>
-                ) : (
-                    data.transactions.slice(0, 3).map((t) => (
-                        <div key={t.id} className="bg-[#111111] p-4 rounded-[24px] flex justify-between items-center border border-white/10 active:scale-[0.98] transition-transform">
-                            <div className="flex items-center gap-4">
-                                <div className={`p-3 rounded-2xl ${t.type === 'expense' ? 'bg-red-500/10 text-red-500' : 'bg-green-500/10 text-green-500'}`}>
-                                    {t.type === 'expense' ? <ArrowDownLeft size={20} strokeWidth={2.5} /> : <ArrowUpRight size={20} strokeWidth={2.5} />}
-                                </div>
-                                <div>
-                                    <p className="font-bold text-white text-sm">{t.category}</p>
-                                    <p className="text-[10px] text-gray-500 mt-0.5 font-medium uppercase">
-                                        {new Date(t.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
-                                        {t.description && t.description !== t.category && ` • ${t.description}`}
-                                    </p>
-                                </div>
-                            </div>
-                            <span className={`font-black text-[15px] tracking-tight ${t.type === 'expense' ? 'text-white' : 'text-green-500'}`}>
-                                {t.type === 'expense' ? '-' : '+'}{t.amount.toLocaleString()} 
-                            </span>
+             <h3 className="text-xl font-bold text-white mb-4 px-2">Недавняя активность</h3>
+             <div className="space-y-3">
+                {data.transactions.slice(0, 3).map((t) => (
+                    <div key={t.id} className="bg-[#111111] p-4 rounded-[24px] flex justify-between items-center border border-white/10">
+                        <div className="flex items-center gap-4">
+                             <div className={`p-3 rounded-2xl ${t.type === 'expense' ? 'bg-red-500/10 text-red-500' : 'bg-green-500/10 text-green-500'}`}>
+                                {t.type === 'expense' ? <ArrowDownLeft size={20} /> : <ArrowUpRight size={20} />}
+                             </div>
+                             <div>
+                                <p className="font-bold text-white text-sm">{t.category}</p>
+                                <p className="text-[10px] text-gray-500 mt-0.5 font-medium uppercase">{t.description}</p>
+                             </div>
                         </div>
-                    ))
-                )}
-            </div>
+                        <span className={`font-black text-[15px] ${t.type === 'expense' ? 'text-white' : 'text-green-500'}`}>
+                            {t.type === 'expense' ? '-' : '+'}{t.amount.toLocaleString()}
+                        </span>
+                    </div>
+                ))}
+             </div>
         </div>
-
       </div>
     );
   };
@@ -443,73 +415,38 @@ const MainApp = () => {
     <div className="p-4 pb-32 space-y-4 animate-fade-in bg-black min-h-screen pt-6">
       <div className="flex justify-between items-center mb-6 px-2">
           <h2 className="text-2xl font-bold text-white">Вся история</h2>
-          <button onClick={() => setActiveTab('stats')} className="text-gray-500 p-2 bg-[#111111] rounded-full border border-white/10 active:bg-white/10 transition-colors">
-             <X size={20} />
-          </button>
+          <button onClick={() => setActiveTab('stats')} className="text-gray-500 p-2 bg-[#111111] rounded-full border border-white/10"><X size={20} /></button>
       </div>
-      
-      {data.transactions.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-64 text-gray-700 mt-10">
-            <div className="bg-[#111111] p-6 rounded-full mb-4 border border-white/5">
-                <Wallet size={48} className="opacity-50 text-gray-500" />
-            </div>
-            <p className="text-sm font-bold uppercase tracking-widest">Список пуст</p>
-        </div>
-      ) : (
-        data.transactions.map((t) => (
-          <div key={t.id} className="bg-[#111111] p-5 rounded-[24px] flex justify-between items-center border border-white/10 active:scale-[0.98] transition-transform group">
-            <div className="flex items-center gap-5">
-              <div className={`p-3.5 rounded-2xl ${t.type === 'expense' ? 'bg-red-500/10 text-red-500' : 'bg-green-500/10 text-green-500'}`}>
-                {t.type === 'expense' ? <ArrowDownLeft size={22} strokeWidth={2.5} /> : <ArrowUpRight size={22} strokeWidth={2.5} />}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-white text-[15px] truncate">{t.category}</p>
-                <div className="flex items-center gap-2 mt-1">
-                    <p className="text-xs text-gray-500 font-medium">
-                        {new Date(t.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
-                    </p>
-                    {t.description && t.description !== t.category && (
-                        <p className="text-xs text-gray-600 truncate max-w-[120px]">
-                            • {t.description}
-                        </p>
-                    )}
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-col items-end gap-2">
-                <span className={`font-black text-[17px] tracking-tight ${t.type === 'expense' ? 'text-white' : 'text-green-500'}`}>
-                {t.type === 'expense' ? '-' : '+'}{t.amount.toLocaleString()} 
-                </span>
-                <button 
-                    onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }}
-                    className="text-gray-600 hover:text-red-500 p-2 rounded-lg hover:bg-red-500/10 transition-colors"
-                >
-                    <Trash2 size={18} />
-                </button>
-            </div>
+      {data.transactions.map((t) => (
+          <div key={t.id} className="bg-[#111111] p-5 rounded-[24px] flex justify-between items-center border border-white/10">
+             <div className="flex items-center gap-5">
+                 <div className={`p-3.5 rounded-2xl ${t.type === 'expense' ? 'bg-red-500/10 text-red-500' : 'bg-green-500/10 text-green-500'}`}>
+                    {t.type === 'expense' ? <ArrowDownLeft size={22} /> : <ArrowUpRight size={22} />}
+                 </div>
+                 <div className="flex-1">
+                    <p className="font-bold text-white text-[15px]">{t.category}</p>
+                    <p className="text-xs text-gray-600">{t.description}</p>
+                 </div>
+             </div>
+             <div className="flex flex-col items-end gap-2">
+                 <span className={`font-black text-[17px] ${t.type === 'expense' ? 'text-white' : 'text-green-500'}`}>
+                    {t.type === 'expense' ? '-' : '+'}{t.amount.toLocaleString()}
+                 </span>
+                 <button onClick={() => handleDelete(t.id)}><Trash2 size={18} className="text-gray-600 hover:text-red-500" /></button>
+             </div>
           </div>
-        ))
-      )}
+      ))}
     </div>
   );
 
   return (
-    <div className="min-h-screen font-sans overflow-x-hidden selection:bg-yellow-500/30"
-         style={{ backgroundColor: '#000000', color: '#ffffff' }}>
-      
+    <div className="min-h-screen font-sans overflow-x-hidden selection:bg-yellow-500/30" style={{ backgroundColor: '#000000', color: '#ffffff' }}>
       <div className="max-w-md mx-auto min-h-screen relative pb-28">
         {activeTab === 'stats' && <StatsView />}
         {activeTab === 'list' && <TransactionList />}
-        
-        {/* Кнопка Добавить работает, не ломая клавиатуру */}
         <AddModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onAdd={handleAddTransaction} />
-        
-        {/* Нижняя панель с кнопкой */}
         <div className="fixed bottom-0 left-0 w-full px-5 py-6 bg-gradient-to-t from-black via-black to-transparent z-20">
-            <button 
-                onClick={() => setIsAddModalOpen(true)} 
-                className="w-full bg-[#00E08F] hover:bg-[#00c980] text-black font-extrabold text-[17px] py-4 rounded-[24px] active:scale-95 transition-all shadow-[0_8px_30px_rgba(0,224,143,0.25)] tracking-wide flex items-center justify-center gap-2"
-            >
+            <button onClick={() => setIsAddModalOpen(true)} className="w-full bg-[#00E08F] text-black font-extrabold text-[17px] py-4 rounded-[24px] flex items-center justify-center gap-2">
                 <Plus strokeWidth={3} size={20} /> Добавить транзакцию
             </button>
         </div>
