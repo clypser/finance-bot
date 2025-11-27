@@ -10,6 +10,9 @@ const app = express();
 const prisma = new PrismaClient();
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
+// === ЛОГ ЗАПУСКА ===
+console.log("🚀 Server restarting... Currency logic updated (Flexible mode)");
+
 // === НАСТРОЙКИ ===
 const apiKey = process.env.OPENAI_API_KEY;
 const proxyUrl = process.env.PROXY_URL; 
@@ -59,28 +62,31 @@ const getCategoryEmoji = (category) => {
 };
 
 // --- AI HELPERS ---
-const analyzeText = async (text, currency = 'UZS') => {
+const analyzeText = async (text, userCurrency = 'UZS') => {
   try {
     if (!apiKey) throw new Error("API Key missing");
 
     const prompt = `
-      Analyze transaction: "${text}". Default currency: ${currency}.
+      Analyze transaction: "${text}".
+      User Default Currency: ${userCurrency}.
       
       GOAL: Extract Amount, Type, Category, and Currency.
 
       RULES:
       1. "25k" = 25000.
-      2. Type: "income" or "expense".
+      2. Type: "income" (earnings) or "expense" (spending).
       3. Category: Choose STRICTLY from the list.
-      4. Currency: Use ${currency} unless specified otherwise (e.g. "$100").
+      4. Currency: 
+         - Detect from text (e.g. "$100" -> USD, "500р" -> RUB).
+         - IF NO currency in text, use User Default: "${userCurrency}".
+         - DO NOT return "undefined" or null for currency.
 
       CATEGORY LIST:
       [Еда, Продукты, Такси, Транспорт, Зарплата, Стипендия, Дивиденды, Вклады, Здоровье, Развлечения, Кафе, Связь, Дом, Одежда, Техника, Табак, Прочее]
 
       EXAMPLES:
-      - "стипендия 300к" -> {"amount": 300000, "category": "Стипендия", "type": "income", "currency": "${currency}"}
-      - "зп 10млн" -> {"amount": 10000000, "category": "Зарплата", "type": "income", "currency": "${currency}"}
-      - "обед 50к" -> {"amount": 50000, "category": "Еда вне дома", "type": "expense", "currency": "${currency}"}
+      - "стипендия 300к" -> {"amount": 300000, "category": "Стипендия", "type": "income", "currency": "${userCurrency}"}
+      - "зп 100$" -> {"amount": 100, "category": "Зарплата", "type": "income", "currency": "USD"}
       
       Return JSON only.
     `;
@@ -113,7 +119,7 @@ bot.start(async (ctx) => {
       create: { telegramId: BigInt(id), firstName: first_name, username, currency: 'UZS' }
     });
     
-    ctx.reply('Исправление привет! Попробуй снова: "стипендия 500к"', 
+    ctx.reply('Бот обновлен! Валюта теперь гибкая (из текста или настроек).', 
       Markup.keyboard([[Markup.button.webApp('📊 Открыть', process.env.WEBAPP_URL)]]).resize()
     );
   } catch (e) { console.error(e); }
@@ -127,13 +133,16 @@ bot.on('text', async (ctx) => {
     
     ctx.sendChatAction('typing');
 
+    // Передаем валюту пользователя в AI, чтобы он использовал её как дефолтную
     const result = await analyzeText(ctx.message.text, user.currency);
     
+    // Финальная страховка: если AI вернул null, берем из профиля
+    const finalCurrency = result.currency || user.currency || 'UZS';
+
     await prisma.transaction.create({
       data: {
         amount: result.amount,
-        // ФИКС: Если AI забыл валюту, берем из настроек юзера
-        currency: result.currency || user.currency, 
+        currency: finalCurrency,
         category: result.category,
         type: result.type,
         description: result.description,
@@ -143,11 +152,11 @@ bot.on('text', async (ctx) => {
 
     const emoji = getCategoryEmoji(result.category);
     const sign = result.type === 'expense' ? '-' : '+';
-    const finalCurrency = result.currency || user.currency;
     
     ctx.reply(`✅ ${sign}${result.amount.toLocaleString()} ${finalCurrency} | ${emoji} ${result.category}`);
 
   } catch (e) {
+    console.error("Bot Error:", e);
     ctx.reply(`❌ Ошибка: ${e.message}`);
   }
 });
