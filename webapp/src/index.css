@@ -2,10 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Принудительно задаем фоны, чтобы перебить настройки Telegram */
-html, body {
-  @apply bg-white dark:bg-gray-950 transition-colors duration-200;
-  /* Сбрасываем цвета от Telegram */
-  background-color: unset !important;
-  color: unset !important;
+body {
+  @apply bg-gray-50 dark:bg-brand-black transition-colors duration-200;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Скрываем скроллбар для красоты */
+::-webkit-scrollbar {
+  width: 0px;
+  background: transparent;
 }
