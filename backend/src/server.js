@@ -67,14 +67,17 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
   try {
     if (!apiKey) throw new Error("API Key missing");
 
+    // === ФИКС 1000: Заменяем 'k'/'к' на '000' вручную ===
+    // Это гарантирует, что AI увидит "200000", а не "200к"
+    const cleanText = text.replace(/(\d+)[kк]/gi, '$1000');
+
     const prompt = `
       You are a transaction parser.
-      Input text: "${text}"
+      Input text: "${cleanText}"
       User Currency: "${userCurrency}"
       
       RULES:
-      1. Extract Amount (number). 
-         IMPORTANT: "k" or "к" means *1000. Examples: "200к" = 200000, "5k" = 5000.
+      1. Extract Amount (number).
       2. Extract Currency (string, default to ${userCurrency}).
       3. Extract Category (string, Russian).
       4. Determine Type ("income" or "expense").
