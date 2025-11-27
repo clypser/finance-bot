@@ -98,13 +98,13 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
     return JSON.parse(content);
   } catch (e) {
     console.error("AI Error:", e);
-    throw new Error(`AI Error: ${e.message}`);
+    // Возвращаем пустой объект, чтобы не крашить бота, обработка будет в bot.on('text')
+    return {};
   }
 };
 
 // --- BOT COMMANDS ---
 
-// Команда /start
 bot.start(async (ctx) => {
   const { id, first_name, username } = ctx.from;
   try {
@@ -119,19 +119,16 @@ bot.start(async (ctx) => {
         ...getCurrencyMenu()
     });
 
-    // Отправляем кнопку WebApp отдельно, чтобы она закрепилась в клавиатуре
     await ctx.reply('Нажми кнопку ниже, чтобы открыть графики 👇', 
       Markup.keyboard([[Markup.button.webApp('📊 Моя статистика', process.env.WEBAPP_URL)]]).resize()
     );
   } catch (e) { console.error(e); }
 });
 
-// Команда /currency для смены валюты
 bot.command('currency', async (ctx) => {
     await ctx.reply('Выберите основную валюту для учета:', getCurrencyMenu());
 });
 
-// Обработчик кнопок смены валюты
 bot.action(/^curr_(.+)$/, async (ctx) => {
     const newCurrency = ctx.match[1];
     const userId = ctx.from.id;
@@ -160,15 +157,22 @@ bot.on('text', async (ctx) => {
     ctx.sendChatAction('typing');
 
     const result = await analyzeText(ctx.message.text, user.currency);
+    
+    // === ВАЖНОЕ ИСПРАВЛЕНИЕ ===
+    // Если AI не нашел сумму (или вернул пустой результат), мы не даем боту упасть
+    if (!result || !result.amount) {
+        return ctx.reply('⚠️ Я не нашел сумму в вашем сообщении. Пожалуйста, напишите, например: "Такси 20000" или "Обед 50к".');
+    }
+
     const finalCurrency = result.currency || user.currency || 'UZS';
 
     await prisma.transaction.create({
       data: {
         amount: result.amount,
         currency: finalCurrency,
-        category: result.category,
-        type: result.type,
-        description: result.description,
+        category: result.category || 'Прочее',
+        type: result.type || 'expense',
+        description: result.description || ctx.message.text, // Сохраняем оригинальный текст как описание
         userId: user.id
       }
     });
@@ -179,7 +183,8 @@ bot.on('text', async (ctx) => {
     ctx.reply(`✅ ${sign}${result.amount.toLocaleString()} ${finalCurrency} | ${emoji} ${result.category}`);
 
   } catch (e) {
-    ctx.reply(`❌ Ошибка: ${e.message}`);
+    console.error("Bot Error:", e);
+    ctx.reply(`❌ Произошла ошибка. Попробуйте еще раз.`);
   }
 });
 
