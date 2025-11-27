@@ -39,6 +39,7 @@ const MainApp = () => {
   const [activeTab, setActiveTab] = useState('stats');
   const [period, setPeriod] = useState('month');
   const [data, setData] = useState({ transactions: [], chartData: [], total: 0 });
+  const [currency, setCurrency] = useState('UZS'); // Состояние для валюты
   const [loading, setLoading] = useState(false);
   const [userName, setUserName] = useState('User');
   
@@ -78,6 +79,7 @@ const MainApp = () => {
       
       const result = await response.json();
       setData(result);
+      if (result.currency) setCurrency(result.currency); // Обновляем валюту
     } catch (err) {
       console.log("No data or offline");
       setData({ transactions: [], chartData: [], total: 0 });
@@ -88,14 +90,13 @@ const MainApp = () => {
 
   const handleDelete = async (id) => {
       if(!confirm("Удалить эту запись?")) return;
-      
       try {
           const userId = getTelegramUserId();
           await fetch(`${API_URL}/transaction/${id}`, {
               method: 'DELETE',
               headers: { 'x-telegram-id': userId }
           });
-          fetchStats(); // Обновляем список
+          fetchStats();
       } catch (e) {
           alert("Ошибка удаления");
       }
@@ -182,7 +183,7 @@ const MainApp = () => {
                       <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
                     </span>
                 )}
-                UZS {displayBalance.toLocaleString()}
+                {currency} {displayBalance.toLocaleString()}
             </h2>
         </div>
 
@@ -213,7 +214,7 @@ const MainApp = () => {
                  <p className={`text-3xl font-black mb-1 tracking-tight ${displayBalance >= 0 ? 'text-white' : 'text-red-500'}`}>
                     {displayBalance > 0 ? '+' : ''}{displayBalance.toLocaleString()}
                  </p>
-                 <p className="text-gray-500 text-[11px] font-bold uppercase tracking-wide">Чистый результат • UZS</p>
+                 <p className="text-gray-500 text-[11px] font-bold uppercase tracking-wide">Чистый результат • {currency}</p>
             </div>
         </div>
 
@@ -264,7 +265,6 @@ const MainApp = () => {
                         <p className="text-gray-500 text-sm">Пока нет операций</p>
                     </div>
                 ) : (
-                    // Показываем только последние 3 транзакции
                     data.transactions.slice(0, 3).map((t) => (
                         <div key={t.id} className="bg-[#111111] p-4 rounded-[24px] flex justify-between items-center border border-white/10 active:scale-[0.98] transition-transform">
                             <div className="flex items-center gap-4">
@@ -292,7 +292,7 @@ const MainApp = () => {
     );
   };
 
-  // --- СПИСОК ТРАНЗАКЦИЙ (ОТДЕЛЬНАЯ СТРАНИЦА) ---
+  // --- СПИСОК ТРАНЗАКЦИЙ ---
   const TransactionList = () => (
     <div className="p-4 pb-32 space-y-4 animate-fade-in bg-black min-h-screen pt-6">
       <div className="flex justify-between items-center mb-6 px-2">
@@ -348,7 +348,8 @@ const MainApp = () => {
   );
 
   const AddModal = () => (
-      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+      // ИЗМЕНЕНИЕ ЗДЕСЬ: items-center вместо items-end
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
           <div className="bg-[#111111] w-full max-w-sm rounded-[32px] border border-white/10 p-6 space-y-6">
               <div className="flex justify-between items-center">
                   <h3 className="text-xl font-bold text-white">Добавить запись</h3>
