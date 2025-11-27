@@ -324,7 +324,7 @@ const MainApp = () => {
             </div>
         </div>
 
-        {/* Кнопки навигации */}
+        {/* === КНОПКИ НАВИГАЦИИ === */}
         <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
                 <button 
@@ -353,7 +353,7 @@ const MainApp = () => {
             </button>
         </div>
 
-        {/* Недавняя активность */}
+        {/* === НЕДАВНЯЯ АКТИВНОСТЬ (НОВЫЙ БЛОК) === */}
         <div className="pt-2">
             <div className="flex justify-between items-center mb-4 px-2">
                 <h3 className="text-xl font-bold text-white">Недавняя активность</h3>
