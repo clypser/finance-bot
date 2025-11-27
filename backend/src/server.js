@@ -98,7 +98,7 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
     return JSON.parse(content);
   } catch (e) {
     console.error("AI Error:", e);
-    // Возвращаем пустой объект, чтобы не крашить бота, обработка будет в bot.on('text')
+    // Возвращаем пустой объект, чтобы обработать это ниже
     return {};
   }
 };
@@ -158,10 +158,10 @@ bot.on('text', async (ctx) => {
 
     const result = await analyzeText(ctx.message.text, user.currency);
     
-    // === ВАЖНОЕ ИСПРАВЛЕНИЕ ===
-    // Если AI не нашел сумму (или вернул пустой результат), мы не даем боту упасть
+    // === ЗАЩИТА ОТ ПУСТЫХ СООБЩЕНИЙ ===
+    // Если AI не нашел сумму (например, вы написали "Привет"), мы просим уточнить
     if (!result || !result.amount) {
-        return ctx.reply('⚠️ Я не нашел сумму в вашем сообщении. Пожалуйста, напишите, например: "Такси 20000" или "Обед 50к".');
+        return ctx.reply('⚠️ Я не нашел сумму. Пожалуйста, напишите трату, например: "Такси 20000" или "Обед 50к".');
     }
 
     const finalCurrency = result.currency || user.currency || 'UZS';
@@ -172,7 +172,7 @@ bot.on('text', async (ctx) => {
         currency: finalCurrency,
         category: result.category || 'Прочее',
         type: result.type || 'expense',
-        description: result.description || ctx.message.text, // Сохраняем оригинальный текст как описание
+        description: result.description || ctx.message.text,
         userId: user.id
       }
     });
