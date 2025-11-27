@@ -17,6 +17,20 @@ const shimmerStyle = `
   }
 `;
 
+// === СПИСКИ КАТЕГОРИЙ ===
+const EXPENSE_CATEGORIES = [
+  'Продукты', 'Еда вне дома', 'Такси', 'Транспорт', 'Дом', 
+  'ЖКУ', 'Связь', 'Здоровье', 'Красота', 'Спорт', 
+  'Одежда', 'Техника', 'Развлечения', 'Подписки', 
+  'Образование', 'Подарки', 'Кредиты', 'Прочее'
+];
+
+const INCOME_CATEGORIES = [
+  'Зарплата', 'Аванс', 'Премия', 'Стипендия', 
+  'Фриланс', 'Бизнес', 'Дивиденды', 'Вклады', 
+  'Кэшбэк', 'Подарки', 'Возврат долга', 'Прочее'
+];
+
 // === КОМПОНЕНТ ДЛЯ ОТЛОВА ОШИБОК ===
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -35,11 +49,12 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// === ВЫНЕСЕННЫЙ КОМПОНЕНТ МОДАЛКИ (ЧТОБЫ КЛАВИАТУРА НЕ ПРЫГАЛА) ===
+// === ВЫНЕСЕННЫЙ КОМПОНЕНТ МОДАЛКИ ===
 const AddModal = ({ isOpen, onClose, onAdd }) => {
   const [newAmount, setNewAmount] = useState('');
-  const [newCategory, setNewCategory] = useState('Прочее');
   const [newType, setNewType] = useState('expense');
+  // Начальная категория зависит от типа
+  const [newCategory, setNewCategory] = useState(EXPENSE_CATEGORIES[0]);
   const [newDescription, setNewDescription] = useState('');
 
   // Сбрасываем форму при открытии
@@ -47,10 +62,16 @@ const AddModal = ({ isOpen, onClose, onAdd }) => {
       if (isOpen) {
           setNewAmount('');
           setNewDescription('');
-          setNewCategory('Прочее');
           setNewType('expense');
+          setNewCategory(EXPENSE_CATEGORIES[0]);
       }
   }, [isOpen]);
+
+  // При смене типа меняем список категорий и сбрасываем выбранную
+  const handleTypeChange = (type) => {
+      setNewType(type);
+      setNewCategory(type === 'expense' ? EXPENSE_CATEGORIES[0] : INCOME_CATEGORIES[0]);
+  };
 
   const handleSubmit = (e) => {
       e.preventDefault();
@@ -64,6 +85,9 @@ const AddModal = ({ isOpen, onClose, onAdd }) => {
 
   if (!isOpen) return null;
 
+  // Выбираем список для отображения
+  const currentCategories = newType === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+
   return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
           <div className="bg-[#111111] w-full max-w-sm rounded-[32px] border border-white/10 p-6 space-y-6">
@@ -76,8 +100,8 @@ const AddModal = ({ isOpen, onClose, onAdd }) => {
                   <div>
                       <label className="text-gray-500 text-xs uppercase font-bold ml-1">Тип</label>
                       <div className="flex bg-black rounded-xl p-1 mt-1 border border-white/5">
-                          <button type="button" onClick={() => setNewType('expense')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newType === 'expense' ? 'bg-white text-black' : 'text-gray-500'}`}>Расход</button>
-                          <button type="button" onClick={() => setNewType('income')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newType === 'income' ? 'bg-white text-black' : 'text-gray-500'}`}>Доход</button>
+                          <button type="button" onClick={() => handleTypeChange('expense')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newType === 'expense' ? 'bg-white text-black' : 'text-gray-500'}`}>Расход</button>
+                          <button type="button" onClick={() => handleTypeChange('income')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newType === 'income' ? 'bg-white text-black' : 'text-gray-500'}`}>Доход</button>
                       </div>
                   </div>
 
@@ -96,19 +120,21 @@ const AddModal = ({ isOpen, onClose, onAdd }) => {
 
                   <div>
                       <label className="text-gray-500 text-xs uppercase font-bold ml-1">Категория</label>
-                      <select 
-                          value={newCategory}
-                          onChange={(e) => setNewCategory(e.target.value)}
-                          className="w-full bg-black border border-white/5 rounded-xl p-4 text-white font-medium outline-none appearance-none"
-                      >
-                          <option>Продукты</option>
-                          <option>Еда вне дома</option>
-                          <option>Такси</option>
-                          <option>Транспорт</option>
-                          <option>Дом</option>
-                          <option>Зарплата</option>
-                          <option>Прочее</option>
-                      </select>
+                      <div className="relative">
+                          <select 
+                              value={newCategory}
+                              onChange={(e) => setNewCategory(e.target.value)}
+                              className="w-full bg-black border border-white/5 rounded-xl p-4 text-white font-medium outline-none appearance-none pr-10"
+                          >
+                              {currentCategories.map(cat => (
+                                  <option key={cat} value={cat}>{cat}</option>
+                              ))}
+                          </select>
+                          {/* Стрелочка для селекта */}
+                          <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
+                              <ChevronRight className="rotate-90" size={20} />
+                          </div>
+                      </div>
                   </div>
 
                   <div>
@@ -117,12 +143,12 @@ const AddModal = ({ isOpen, onClose, onAdd }) => {
                           type="text" 
                           value={newDescription}
                           onChange={(e) => setNewDescription(e.target.value)}
-                          placeholder="Например: обед в офисе"
+                          placeholder={newType === 'expense' ? "Например: обед в офисе" : "Например: аванс за проект"}
                           className="w-full bg-black border border-white/5 rounded-xl p-4 text-white font-medium focus:border-green-500 outline-none transition-colors"
                       />
                   </div>
 
-                  <button type="submit" className="w-full bg-[#00E08F] hover:bg-[#00c980] text-black font-extrabold text-lg py-4 rounded-[20px] mt-4">
+                  <button type="submit" className="w-full bg-[#00E08F] hover:bg-[#00c980] text-black font-extrabold text-lg py-4 rounded-[20px] mt-4 shadow-[0_4px_14px_0_rgba(0,224,143,0.39)] transition-shadow">
                       Сохранить
                   </button>
               </form>
@@ -169,12 +195,7 @@ const MainApp = () => {
       
       const result = await response.json();
       setData(result);
-      
-      // === ФИКС ВАЛЮТЫ ===
-      // Если сервер вернул валюту, обновляем состояние
-      if (result.currency) {
-          setCurrency(result.currency);
-      }
+      if (result.currency) setCurrency(result.currency);
     } catch (err) {
       console.log("No data or offline");
       setData({ transactions: [], chartData: [], total: 0 });
