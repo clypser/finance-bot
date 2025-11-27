@@ -124,25 +124,31 @@ bot.command('currency', async (ctx) => {
     await ctx.reply('Выберите валюту:', getCurrencyMenu());
 });
 
+// === ОБРАБОТЧИК СМЕНЫ ВАЛЮТЫ ===
 bot.action(/^curr_(.+)$/, async (ctx) => {
     const newCurrency = ctx.match[1];
     const userId = ctx.from.id;
-    console.log(`🔄 User ${userId} changing currency to ${newCurrency}`);
+    
+    // ЛОГ: Смена валюты
+    console.log(`🔄 [Currency Change] User ${userId} selected: ${newCurrency}`);
     
     try {
-        await prisma.user.update({
+        const updatedUser = await prisma.user.update({
             where: { telegramId: BigInt(userId) },
             data: { currency: newCurrency }
         });
         
+        console.log(`✅ [DB Update] User ${userId} currency updated to: ${updatedUser.currency}`);
+        
         await ctx.answerCbQuery(`OK: ${newCurrency}`);
         await ctx.editMessageText(`✅ Валюта обновлена: <b>${newCurrency}</b>`, { parse_mode: 'HTML' });
     } catch (e) {
-        console.error("Update currency error:", e);
+        console.error("❌ [Error] Update currency failed:", e);
         await ctx.answerCbQuery("Ошибка.");
     }
 });
 
+// === ОБРАБОТЧИК ТЕКСТА ===
 bot.on('text', async (ctx) => {
   try {
     const userId = BigInt(ctx.from.id);
@@ -150,6 +156,10 @@ bot.on('text', async (ctx) => {
     if (!user) return ctx.reply('Нажми /start');
     
     const currentCurrency = user.currency || 'UZS';
+    
+    // ЛОГ: Обработка текста
+    console.log(`📝 [New Text] User ${userId} wrote: "${ctx.message.text}". User Currency in DB: ${currentCurrency}`);
+
     const result = await analyzeText(ctx.message.text, currentCurrency);
     
     if (!result || !result.amount) {
@@ -157,6 +167,9 @@ bot.on('text', async (ctx) => {
     }
 
     const finalCurrency = result.currency || currentCurrency;
+    
+    // ЛОГ: Результат AI
+    console.log(`🤖 [AI Result] Amount: ${result.amount}, Currency: ${finalCurrency} (AI decided)`);
 
     await prisma.transaction.create({
       data: {
@@ -182,36 +195,23 @@ bot.launch();
 // --- API ROUTES ---
 const getUserId = async (req) => {
   const tid = req.headers['x-telegram-id'];
-  // !!! ЛОГ ДИАГНОСТИКИ !!!
-  console.log(`🔑 Auth request with header x-telegram-id: ${tid}`);
-  
   if (!tid) return null;
   try {
     const telegramId = BigInt(tid);
     let user = await prisma.user.findUnique({ where: { telegramId } });
     if (!user && tid === '123456789') {
-        console.log("Creating DEMO user");
         user = await prisma.user.create({ data: { telegramId, firstName: "Demo", username: "demo", currency: "UZS" }});
     }
     return user ? user.id : null;
-  } catch (e) { 
-    console.error("Auth parsing error:", e);
-    return null; 
-  }
+  } catch (e) { return null; }
 };
 
 app.get('/stats/:period', async (req, res) => {
   try {
     const userId = await getUserId(req);
-    if (!userId) {
-        console.log("❌ Unauthorized access to stats");
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
-    // !!! ЛОГ ДИАГНОСТИКИ !!!
-    console.log(`📊 Stats requested for User ID: ${userId}. Currency in DB: ${user?.currency}`);
-
     const { period } = req.params;
     const now = new Date();
     let dateFilter = {};
