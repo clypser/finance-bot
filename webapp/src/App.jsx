@@ -53,11 +53,9 @@ class ErrorBoundary extends React.Component {
 const AddModal = ({ isOpen, onClose, onAdd }) => {
   const [newAmount, setNewAmount] = useState('');
   const [newType, setNewType] = useState('expense');
-  // Начальная категория зависит от типа
   const [newCategory, setNewCategory] = useState(EXPENSE_CATEGORIES[0]);
   const [newDescription, setNewDescription] = useState('');
 
-  // Сбрасываем форму при открытии
   useEffect(() => {
       if (isOpen) {
           setNewAmount('');
@@ -67,7 +65,6 @@ const AddModal = ({ isOpen, onClose, onAdd }) => {
       }
   }, [isOpen]);
 
-  // При смене типа меняем список категорий и сбрасываем выбранную
   const handleTypeChange = (type) => {
       setNewType(type);
       setNewCategory(type === 'expense' ? EXPENSE_CATEGORIES[0] : INCOME_CATEGORIES[0]);
@@ -85,7 +82,6 @@ const AddModal = ({ isOpen, onClose, onAdd }) => {
 
   if (!isOpen) return null;
 
-  // Выбираем список для отображения
   const currentCategories = newType === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
 
   return (
@@ -130,7 +126,6 @@ const AddModal = ({ isOpen, onClose, onAdd }) => {
                                   <option key={cat} value={cat}>{cat}</option>
                               ))}
                           </select>
-                          {/* Стрелочка для селекта */}
                           <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
                               <ChevronRight className="rotate-90" size={20} />
                           </div>
@@ -161,7 +156,15 @@ const MainApp = () => {
   const [activeTab, setActiveTab] = useState('stats');
   const [period, setPeriod] = useState('month');
   const [data, setData] = useState({ transactions: [], chartData: [], total: 0 });
-  const [currency, setCurrency] = useState('UZS'); // Состояние для валюты
+  
+  // === ИСПРАВЛЕНИЕ ВАЛЮТЫ: Используем localStorage для сохранения ===
+  const [currency, setCurrency] = useState(() => {
+      if (typeof window !== 'undefined' && window.localStorage) {
+          return localStorage.getItem('userCurrency') || 'UZS';
+      }
+      return 'UZS';
+  });
+
   const [loading, setLoading] = useState(false);
   const [userName, setUserName] = useState('User');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -195,7 +198,12 @@ const MainApp = () => {
       
       const result = await response.json();
       setData(result);
-      if (result.currency) setCurrency(result.currency);
+      
+      // Обновляем валюту и сохраняем в localStorage
+      if (result.currency) {
+          setCurrency(result.currency);
+          localStorage.setItem('userCurrency', result.currency);
+      }
     } catch (err) {
       console.log("No data or offline");
       setData({ transactions: [], chartData: [], total: 0 });

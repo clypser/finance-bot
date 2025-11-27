@@ -67,24 +67,34 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
   try {
     if (!apiKey) throw new Error("API Key missing");
 
+    // === ПРЕДОБРАБОТКА ТЕКСТА (ЖЕСТКАЯ ЗАМЕНА) ===
+    let cleanText = text;
+    
+    // 1. Заменяем "k", "к" на "000" (например: 200к -> 200000)
+    cleanText = cleanText.replace(/(\d+)\s*[kк]/gi, (match, p1) => p1 + '000');
+    
+    // 2. Заменяем "m", "м", "млн" на "000000" (например: 5млн -> 5000000)
+    cleanText = cleanText.replace(/(\d+)\s*(m|м|млн)/gi, (match, p1) => p1 + '000000');
+
+    console.log(`Original: "${text}" -> Clean: "${cleanText}"`); // Лог для проверки
+
     const prompt = `
-      Analyze transaction: "${text}".
-      User Default Currency: ${userCurrency}.
+      You are a transaction parser.
+      Input text: "${cleanText}"
+      User Currency: "${userCurrency}"
       
       GOAL: Extract Amount, Type, Category, and Currency.
       
       RULES:
-      1. "25k" = 25000.
-      2. Type: "income" or "expense".
-      3. Category: Choose STRICTLY from the list.
-      4. Currency: 
-         - Detect from text (e.g. "$100" -> USD).
-         - IF NO currency in text, use Default: "${userCurrency}".
+      1. Extract Amount (number).
+      2. Extract Currency (string, default to ${userCurrency}).
+      3. Extract Category (string, Russian).
+      4. Determine Type ("income" or "expense").
 
-      CATEGORY LIST:
-      [Еда, Продукты, Такси, Транспорт, Зарплата, Стипендия, Дивиденды, Вклады, Здоровье, Развлечения, Кафе, Связь, Дом, Одежда, Техника, Табак, Прочее]
+      Categories: [Еда, Продукты, Такси, Транспорт, Зарплата, Стипендия, Дивиденды, Вклады, Здоровье, Развлечения, Кафе, Связь, Дом, Одежда, Техника, Табак, Прочее]
 
-      Return JSON only.
+      Output JSON ONLY. No markdown.
+      Example: {"amount": 200000, "currency": "UZS", "category": "Еда", "type": "expense"}
     `;
 
     const completion = await openai.chat.completions.create({
@@ -98,6 +108,7 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
     return JSON.parse(content);
   } catch (e) {
     console.error("AI Error:", e);
+    // Возвращаем пустой объект, чтобы обработать это ниже
     return {};
   }
 };
@@ -155,13 +166,15 @@ bot.on('text', async (ctx) => {
     
     ctx.sendChatAction('typing');
 
-    const result = await analyzeText(ctx.message.text, user.currency);
+    const currentCurrency = user.currency || 'UZS';
+    const result = await analyzeText(ctx.message.text, currentCurrency);
     
+    // === ЗАЩИТА ОТ ПУСТЫХ СООБЩЕНИЙ ===
     if (!result || !result.amount) {
-        return ctx.reply('⚠️ Я не нашел сумму в вашем сообщении.\nПожалуйста, напишите трату с цифрами, например:\n— "Такси 20000"\n— "Обед 50к"');
+        return ctx.reply(`⚠️ Не вижу сумму. Ответ AI:\n\n${JSON.stringify(result, null, 2)}\n\nПопробуйте написать: "200 ${currentCurrency}"`);
     }
 
-    const finalCurrency = result.currency || user.currency || 'UZS';
+    const finalCurrency = result.currency || currentCurrency;
 
     await prisma.transaction.create({
       data: {
@@ -181,7 +194,7 @@ bot.on('text', async (ctx) => {
 
   } catch (e) {
     console.error("Bot Error:", e);
-    ctx.reply(`❌ Ошибка обработки.`);
+    ctx.reply(`❌ Ошибка: ${e.message}`);
   }
 });
 
@@ -203,15 +216,8 @@ const getUserId = async (req) => {
 
 app.get('/stats/:period', async (req, res) => {
   try {
-    const tid = req.headers['x-telegram-id'];
     const userId = await getUserId(req);
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-
-    // === ИСПРАВЛЕНИЕ ===
-    // Получаем пользователя, чтобы узнать его валюту
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    const userCurrency = user?.currency || 'UZS';
-
     const { period } = req.params;
     const now = new Date();
     let dateFilter = {};
@@ -220,14 +226,16 @@ app.get('/stats/:period', async (req, res) => {
     if (period === 'month') dateFilter = { gte: startOfMonth(now), lte: endOfMonth(now) };
 
     const transactions = await prisma.transaction.findMany({ where: { userId, date: dateFilter }, orderBy: { date: 'desc' } });
+    
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+
     const stats = transactions.reduce((acc, curr) => {
       if (curr.type === 'expense') acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
       return acc;
     }, {});
     const chartData = Object.keys(stats).map(key => ({ name: key, value: stats[key] }));
     
-    // Возвращаем валюту вместе с данными
-    res.json({ transactions, chartData, total: transactions.length, currency: userCurrency });
+    res.json({ transactions, chartData, total: transactions.length, currency: user?.currency || 'UZS' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -247,7 +255,7 @@ app.delete('/transaction/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// НОВЫЙ МАРШРУТ: Ручное добавление
+// НОВЫЙ МАРШРУТ: Ручное добавление транзакции
 app.post('/transaction/add', async (req, res) => {
   try {
     const userId = await getUserId(req);
