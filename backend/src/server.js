@@ -10,27 +10,25 @@ const app = express();
 const prisma = new PrismaClient();
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
-// === НАСТРОЙКА OPENAI И ПРОКСИ ===
+// === НАСТРОЙКИ ===
 const apiKey = process.env.OPENAI_API_KEY;
 const proxyUrl = process.env.PROXY_URL; 
+const baseURL = process.env.OPENAI_BASE_URL;
 
 let openai;
 
-if (!apiKey) {
-  console.error("⚠️ WARNING: OPENAI_API_KEY is missing!");
-}
+const openaiConfig = {
+  apiKey: apiKey || "",
+  baseURL: baseURL || undefined
+};
 
 if (proxyUrl) {
-  console.log(`🌐 Using Proxy for OpenAI: ${proxyUrl}`);
+  console.log(`🌐 Using Proxy: ${proxyUrl}`);
   const agent = new HttpsProxyAgent(proxyUrl);
-  openai = new OpenAI({
-    apiKey: apiKey || "",
-    httpAgent: agent // Заставляем OpenAI идти через прокси
-  });
-} else {
-  console.log("⚠️ No proxy detected. Connecting to OpenAI directly (might be blocked in RU).");
-  openai = new OpenAI({ apiKey: apiKey || "" });
+  openaiConfig.httpAgent = agent;
 }
+
+openai = new OpenAI(openaiConfig);
 
 app.use(cors());
 app.use(express.json());
@@ -45,45 +43,57 @@ const getCategoryEmoji = (category) => {
     'Аренда': '🔑', 'Одежда': '👕', 'Красота': '💇', 'Спорт': '⚽',
     'Подарки': '🎁', 'Техника': '💻', 'Прочее': '📦'
   };
+  // Ищем частичное совпадение (например, "Кафе и рестораны" -> "Кафе")
   for (const key in map) {
-    if (category && category.includes(key)) return map[key];
+    if (category && category.toLowerCase().includes(key.toLowerCase())) return map[key];
   }
   return '✨';
 };
 
-// --- AI HELPERS ---
+// --- AI HELPERS (УЛУЧШЕННЫЙ ПРОМПТ) ---
 const analyzeText = async (text, currency = 'UZS') => {
   try {
     if (!apiKey) throw new Error("API Key missing");
 
     const prompt = `
-      Analyze this financial text: "${text}".
-      User's default currency: ${currency}.
-      Rules:
-      1. "25k", "25к" = 25000.
-      2. Category in RUSSIAN (e.g., "Еда", "Такси").
-      3. Type: "expense" or "income".
+      Analyze financial text: "${text}". User currency: ${currency}.
       
-      Return ONLY valid JSON: {"amount": 100, "category": "Еда", "type": "expense", "currency": "UZS", "description": "text"}
+      STRICT RULES:
+      1. "25k" = 25000.
+      2. Detect TYPE: "expense" (spending) or "income" (earning).
+         - Keywords for INCOME: "зп", "зарплата", "аванс", "дивиденды", "пришло", "получил".
+      
+      3. Detect CATEGORY from list: 
+         - Еда (food, lunch, dinner)
+         - Такси (taxi, uber)
+         - Продукты (groceries, market)
+         - Зарплата (salary, wage, zp)
+         - Дивиденды (dividends, investment)
+         - Дом (rent, utilities)
+         - Развлечения (cinema, games)
+         - Здоровье (pharmacy, doctor)
+         - Прочее (if unsure)
+      
+      4. IF text is just "зп 1000", assume category "Зарплата" and type "income".
+      5. IF text is just "50000", assume category "Прочее" and type "expense".
+
+      Return JSON: {"amount": 100, "category": "CategoryName", "type": "expense", "currency": "UZS", "description": "original text"}
     `;
 
     const completion = await openai.chat.completions.create({
       messages: [
-        { role: "system", content: "You are a financial assistant. Output strictly JSON." },
+        { role: "system", content: "You are a strict financial parser. Output JSON only." },
         { role: "user", content: prompt }
       ],
-      model: "gpt-3.5-turbo", // Используем 3.5, она дешевле и доступнее
+      model: "gpt-3.5-turbo",
       response_format: { type: "json_object" }
     });
 
     const content = completion.choices[0].message.content;
-    if (!content) throw new Error("Empty response from OpenAI");
-    
     return JSON.parse(content);
   } catch (e) {
-    console.error("OpenAI Error:", e);
-    // Выводим подробную ошибку, чтобы понять, заблокировали нас или нет
-    throw new Error(`OpenAI Error: ${e.message || e.toString()}`);
+    console.error("AI Error:", e);
+    throw new Error(`AI Error: ${e.message}`);
   }
 };
 
@@ -97,21 +107,16 @@ bot.start(async (ctx) => {
       create: { telegramId: BigInt(id), firstName: first_name, username, currency: 'UZS' }
     });
     
-    ctx.reply('Привет! Я переключился обратно на OpenAI (GPT). Напиши трату: "Такси 20к".', 
-      Markup.keyboard([
-        [Markup.button.webApp('📊 Открыть Статистику', process.env.WEBAPP_URL)]
-      ]).resize()
+    ctx.reply('Я обновил логику! Теперь я понимаю, что "ЗП" — это доход. Попробуй: "зп 5млн"', 
+      Markup.keyboard([[Markup.button.webApp('📊 Открыть', process.env.WEBAPP_URL)]]).resize()
     );
-  } catch (e) {
-    console.error("Start Error:", e);
-  }
+  } catch (e) { console.error(e); }
 });
 
 bot.on('text', async (ctx) => {
   try {
     const userId = BigInt(ctx.from.id);
     const user = await prisma.user.findUnique({ where: { telegramId: userId } });
-    
     if (!user) return ctx.reply('Нажми /start');
     
     const result = await analyzeText(ctx.message.text, user.currency);
@@ -133,14 +138,13 @@ bot.on('text', async (ctx) => {
     ctx.reply(`✅ ${sign}${result.amount.toLocaleString()} ${result.currency} | ${emoji} ${result.category}`);
 
   } catch (e) {
-    console.error("Transaction Error Full:", e);
     ctx.reply(`❌ Ошибка: ${e.message}`);
   }
 });
 
-bot.launch().catch(err => console.error("Bot launch error:", err));
+bot.launch();
 
-// --- API ROUTES ---
+// --- API ---
 const getUserId = async (req) => {
   const tid = req.headers['x-telegram-id'];
   if (!tid) return null;
@@ -148,9 +152,7 @@ const getUserId = async (req) => {
     const telegramId = BigInt(tid);
     let user = await prisma.user.findUnique({ where: { telegramId } });
     if (!user && tid === '123456789') {
-        user = await prisma.user.create({
-            data: { telegramId, firstName: "Demo", username: "demo", currency: "UZS" }
-        });
+        user = await prisma.user.create({ data: { telegramId, firstName: "Demo", username: "demo", currency: "UZS" }});
     }
     return user ? user.id : null;
   } catch (e) { return null; }
@@ -160,36 +162,24 @@ app.get('/stats/:period', async (req, res) => {
   try {
     const userId = await getUserId(req);
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-
     const { period } = req.params;
     const now = new Date();
     let dateFilter = {};
-
     if (period === 'day') dateFilter = { gte: startOfDay(now), lte: endOfDay(now) };
     if (period === 'week') dateFilter = { gte: startOfWeek(now), lte: endOfWeek(now) };
     if (period === 'month') dateFilter = { gte: startOfMonth(now), lte: endOfMonth(now) };
 
-    const transactions = await prisma.transaction.findMany({
-      where: { userId, date: dateFilter },
-      orderBy: { date: 'desc' }
-    });
-
+    const transactions = await prisma.transaction.findMany({ where: { userId, date: dateFilter }, orderBy: { date: 'desc' } });
     const stats = transactions.reduce((acc, curr) => {
-      if (curr.type === 'expense') {
-        acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
-      }
+      if (curr.type === 'expense') acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
       return acc;
     }, {});
-
     const chartData = Object.keys(stats).map(key => ({ name: key, value: stats[key] }));
     res.json({ transactions, chartData, total: transactions.length });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log(`Server running on ${PORT}`));
-
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
