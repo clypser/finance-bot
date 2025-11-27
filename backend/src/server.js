@@ -98,7 +98,9 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
     return JSON.parse(content);
   } catch (e) {
     console.error("AI Error:", e);
-    return {};
+    // ВАЖНО: Мы пробрасываем ошибку дальше, чтобы пользователь её увидел,
+    // а не просто "Я не нашел сумму".
+    throw e;
   }
 };
 
@@ -155,13 +157,11 @@ bot.on('text', async (ctx) => {
     
     ctx.sendChatAction('typing');
 
+    // Теперь, если здесь будет ошибка (например, Прокси сдох), она вылетит в catch
     const result = await analyzeText(ctx.message.text, user.currency);
     
-    // === ВОТ ЭТА ЗАЩИТА, КОТОРАЯ ПРОПАЛА ===
-    // Если AI не нашел сумму (значит это просто болтовня типа "Привет"),
-    // мы вежливо просим ввести данные, а не падаем с ошибкой базы данных.
     if (!result || !result.amount) {
-        return ctx.reply('⚠️ Я не нашел сумму в вашем сообщении.\nПожалуйста, напишите трату с цифрами, например:\n— "Такси 20000"\n— "Обед 50к"');
+        return ctx.reply('⚠️ Я понял текст, но не нашел сумму. Попробуйте написать число, например: "Обед 500".');
     }
 
     const finalCurrency = result.currency || user.currency || 'UZS';
@@ -184,8 +184,8 @@ bot.on('text', async (ctx) => {
 
   } catch (e) {
     console.error("Bot Error:", e);
-    // Теперь сюда мы попадем только если сломается база данных или сервер, а не от слова "Привет"
-    ctx.reply(`❌ Произошла ошибка при сохранении.`);
+    // Теперь бот напишет РЕАЛЬНУЮ причину
+    ctx.reply(`❌ Ошибка подключения к AI: ${e.message}\n\nВозможно, проблема с Прокси или Ключом.`);
   }
 });
 
