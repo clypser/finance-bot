@@ -113,7 +113,7 @@ bot.start(async (ctx) => {
       create: { telegramId: BigInt(id), firstName: first_name, username, currency: 'UZS' }
     });
     
-    ctx.reply('Исправление загружено! Попробуй снова: "стипендия 500к"', 
+    ctx.reply('Исправление привет! Попробуй снова: "стипендия 500к"', 
       Markup.keyboard([[Markup.button.webApp('📊 Открыть', process.env.WEBAPP_URL)]]).resize()
     );
   } catch (e) { console.error(e); }
