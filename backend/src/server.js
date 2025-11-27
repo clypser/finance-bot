@@ -10,9 +10,6 @@ const app = express();
 const prisma = new PrismaClient();
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
-// === ЛОГ ЗАПУСКА ===
-console.log("🚀 Server restarting... Currency logic updated (Flexible mode)");
-
 // === НАСТРОЙКИ ===
 const apiKey = process.env.OPENAI_API_KEY;
 const proxyUrl = process.env.PROXY_URL; 
@@ -36,10 +33,16 @@ openai = new OpenAI(openaiConfig);
 app.use(cors());
 app.use(express.json());
 
+// === КЛАВИАТУРА ВАЛЮТ ===
+const getCurrencyMenu = () => Markup.inlineKeyboard([
+  [Markup.button.callback('🇺🇿 UZS', 'curr_UZS'), Markup.button.callback('🇺🇸 USD', 'curr_USD')],
+  [Markup.button.callback('🇷🇺 RUB', 'curr_RUB'), Markup.button.callback('🇰🇿 KZT', 'curr_KZT')],
+  [Markup.button.callback('🇪🇺 EUR', 'curr_EUR')]
+]);
+
 // --- EMOJI MAP ---
 const getCategoryEmoji = (category) => {
   const map = {
-    // --- РАСХОДЫ ---
     'Продукты': '🛒', 'Еда вне дома': '🍔', 'Кофе': '☕', 'Алкоголь': '🍺', 'Табак': '🚬',
     'Транспорт': '🚌', 'Такси': '🚕', 'Авто': '🚘', 'Бензин': '⛽', 'Каршеринг': '🚗',
     'Дом': '🏠', 'ЖКУ': '💡', 'Ремонт': '🛠️', 'Связь': '📱', 'Интернет': '🌐',
@@ -47,13 +50,11 @@ const getCategoryEmoji = (category) => {
     'Техника': '💻', 'Развлечения': '🍿', 'Подписки': '🔄', 'Хобби': '🎨', 'Путешествия': '✈️',
     'Образование': '📚', 'Дети': '🧸', 'Животные': '🐶', 'Подарки': '🎁', 'Благотворительность': '❤️',
     'Кредиты': '💳', 'Налоги': '🏛️', 'Комиссии': '💸',
-    // --- ДОХОДЫ ---
     'Зарплата': '💰', 'Аванс': '💸', 'Премия': '🏆', 'Стипендия': '🎓', 'Фриланс': '💻',
     'Бизнес': '💼', 'Дивиденды': '📈', 'Вклады': '🏦', 'Кэшбэк': '🤑',
     'Подарки (полученные)': '🎁', 'Продажа вещей': '📦', 'Возврат долга': '🤝',
     'Прочее': '📝'
   };
-
   for (const key in map) {
     if (category && category.toLowerCase().includes(key.toLowerCase())) return map[key];
   }
@@ -71,31 +72,23 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
       User Default Currency: ${userCurrency}.
       
       GOAL: Extract Amount, Type, Category, and Currency.
-
+      
       RULES:
       1. "25k" = 25000.
-      2. Type: "income" (earnings) or "expense" (spending).
+      2. Type: "income" or "expense".
       3. Category: Choose STRICTLY from the list.
       4. Currency: 
-         - Detect from text (e.g. "$100" -> USD, "500р" -> RUB).
-         - IF NO currency in text, use User Default: "${userCurrency}".
-         - DO NOT return "undefined" or null for currency.
+         - Detect from text (e.g. "$100" -> USD).
+         - IF NO currency in text, use Default: "${userCurrency}".
 
       CATEGORY LIST:
       [Еда, Продукты, Такси, Транспорт, Зарплата, Стипендия, Дивиденды, Вклады, Здоровье, Развлечения, Кафе, Связь, Дом, Одежда, Техника, Табак, Прочее]
 
-      EXAMPLES:
-      - "стипендия 300к" -> {"amount": 300000, "category": "Стипендия", "type": "income", "currency": "${userCurrency}"}
-      - "зп 100$" -> {"amount": 100, "category": "Зарплата", "type": "income", "currency": "USD"}
-      
       Return JSON only.
     `;
 
     const completion = await openai.chat.completions.create({
-      messages: [
-        { role: "system", content: "You are a smart financial assistant. Output JSON only." },
-        { role: "user", content: prompt }
-      ],
+      messages: [{ role: "user", content: prompt }],
       model: "gpt-4o", 
       response_format: { type: "json_object" },
       temperature: 0.1 
@@ -109,22 +102,55 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
   }
 };
 
-// --- BOT LOGIC ---
+// --- BOT COMMANDS ---
+
+// Команда /start
 bot.start(async (ctx) => {
   const { id, first_name, username } = ctx.from;
   try {
-    await prisma.user.upsert({
+    const user = await prisma.user.upsert({
       where: { telegramId: BigInt(id) },
       update: { firstName: first_name, username },
       create: { telegramId: BigInt(id), firstName: first_name, username, currency: 'UZS' }
     });
     
-    ctx.reply('Бот обновлен! Валюта теперь гибкая (из текста или настроек).', 
-      Markup.keyboard([[Markup.button.webApp('📊 Открыть', process.env.WEBAPP_URL)]]).resize()
+    await ctx.reply(`Привет, ${first_name}! 👋\nЯ твой финансовый помощник (GPT-4o).\n\nТвоя текущая валюта: <b>${user.currency}</b>.\nЕсли хочешь изменить её, нажми на кнопку ниже или введи команду /currency.`, {
+        parse_mode: 'HTML',
+        ...getCurrencyMenu()
+    });
+
+    // Отправляем кнопку WebApp отдельно, чтобы она закрепилась в клавиатуре
+    await ctx.reply('Нажми кнопку ниже, чтобы открыть графики 👇', 
+      Markup.keyboard([[Markup.button.webApp('📊 Моя статистика', process.env.WEBAPP_URL)]]).resize()
     );
   } catch (e) { console.error(e); }
 });
 
+// Команда /currency для смены валюты
+bot.command('currency', async (ctx) => {
+    await ctx.reply('Выберите основную валюту для учета:', getCurrencyMenu());
+});
+
+// Обработчик кнопок смены валюты
+bot.action(/^curr_(.+)$/, async (ctx) => {
+    const newCurrency = ctx.match[1];
+    const userId = ctx.from.id;
+    
+    try {
+        await prisma.user.update({
+            where: { telegramId: BigInt(userId) },
+            data: { currency: newCurrency }
+        });
+        
+        await ctx.answerCbQuery(`Валюта изменена на ${newCurrency}`);
+        await ctx.editMessageText(`✅ Готово! Твоя основная валюта теперь: <b>${newCurrency}</b>.\n\nТеперь все суммы без указания значка (например "обед 500") я буду считать в ${newCurrency}.`, { parse_mode: 'HTML' });
+    } catch (e) {
+        console.error("Update currency error:", e);
+        await ctx.answerCbQuery("Ошибка обновления.");
+    }
+});
+
+// Обработчик текста
 bot.on('text', async (ctx) => {
   try {
     const userId = BigInt(ctx.from.id);
@@ -133,10 +159,7 @@ bot.on('text', async (ctx) => {
     
     ctx.sendChatAction('typing');
 
-    // Передаем валюту пользователя в AI, чтобы он использовал её как дефолтную
     const result = await analyzeText(ctx.message.text, user.currency);
-    
-    // Финальная страховка: если AI вернул null, берем из профиля
     const finalCurrency = result.currency || user.currency || 'UZS';
 
     await prisma.transaction.create({
@@ -156,7 +179,6 @@ bot.on('text', async (ctx) => {
     ctx.reply(`✅ ${sign}${result.amount.toLocaleString()} ${finalCurrency} | ${emoji} ${result.category}`);
 
   } catch (e) {
-    console.error("Bot Error:", e);
     ctx.reply(`❌ Ошибка: ${e.message}`);
   }
 });
