@@ -4,7 +4,6 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 const API_URL = ''; 
 
-// === СТИЛИ ДЛЯ АНИМАЦИИ ===
 const shimmerStyle = `
   @keyframes shimmer {
     0% { background-position: 100% 0; }
@@ -17,7 +16,6 @@ const shimmerStyle = `
   }
 `;
 
-// === СПИСКИ КАТЕГОРИЙ ===
 const EXPENSE_CATEGORIES = [
   'Продукты', 'Еда вне дома', 'Такси', 'Транспорт', 'Дом', 
   'ЖКУ', 'Связь', 'Здоровье', 'Красота', 'Спорт', 
@@ -31,7 +29,6 @@ const INCOME_CATEGORIES = [
   'Кэшбэк', 'Подарки', 'Возврат долга', 'Прочее'
 ];
 
-// === КОМПОНЕНТ ДЛЯ ОТЛОВА ОШИБОК ===
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -49,15 +46,12 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// === ВЫНЕСЕННЫЙ КОМПОНЕНТ МОДАЛКИ ===
 const AddModal = ({ isOpen, onClose, onAdd }) => {
   const [newAmount, setNewAmount] = useState('');
   const [newType, setNewType] = useState('expense');
-  // Начальная категория зависит от типа
   const [newCategory, setNewCategory] = useState(EXPENSE_CATEGORIES[0]);
   const [newDescription, setNewDescription] = useState('');
 
-  // Сбрасываем форму при открытии
   useEffect(() => {
       if (isOpen) {
           setNewAmount('');
@@ -67,7 +61,6 @@ const AddModal = ({ isOpen, onClose, onAdd }) => {
       }
   }, [isOpen]);
 
-  // При смене типа меняем список категорий и сбрасываем выбранную
   const handleTypeChange = (type) => {
       setNewType(type);
       setNewCategory(type === 'expense' ? EXPENSE_CATEGORIES[0] : INCOME_CATEGORIES[0]);
@@ -85,7 +78,6 @@ const AddModal = ({ isOpen, onClose, onAdd }) => {
 
   if (!isOpen) return null;
 
-  // Выбираем список для отображения
   const currentCategories = newType === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
 
   return (
@@ -130,7 +122,6 @@ const AddModal = ({ isOpen, onClose, onAdd }) => {
                                   <option key={cat} value={cat}>{cat}</option>
                               ))}
                           </select>
-                          {/* Стрелочка для селекта */}
                           <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
                               <ChevronRight className="rotate-90" size={20} />
                           </div>
@@ -162,7 +153,6 @@ const MainApp = () => {
   const [period, setPeriod] = useState('month');
   const [data, setData] = useState({ transactions: [], chartData: [], total: 0 });
   
-  // === ИСПРАВЛЕНИЕ ВАЛЮТЫ: Используем localStorage для сохранения ===
   const [currency, setCurrency] = useState(() => {
       if (typeof window !== 'undefined' && window.localStorage) {
           return localStorage.getItem('userCurrency') || 'UZS';
@@ -204,7 +194,6 @@ const MainApp = () => {
       const result = await response.json();
       setData(result);
       
-      // Обновляем валюту и сохраняем в localStorage
       if (result.currency) {
           setCurrency(result.currency);
           localStorage.setItem('userCurrency', result.currency);
@@ -255,7 +244,6 @@ const MainApp = () => {
     }
   }, [activeTab, period]);
 
-  // --- ГЛАВНАЯ СТРАНИЦА ---
   const StatsView = () => {
     const displayBalance = data.transactions.reduce((acc, t) => acc + (t.type === 'income' ? t.amount : -t.amount), 0);
     const displayExpense = data.chartData.reduce((acc, c) => acc + c.value, 0);
@@ -265,7 +253,6 @@ const MainApp = () => {
       <div className="p-5 pb-36 space-y-6 animate-fade-in font-sans">
         <style>{shimmerStyle}</style>
         
-        {/* Хедер */}
         <div className="flex justify-between items-center pt-2 px-1">
             <button className="text-gray-500 hover:text-white transition-colors p-1" onClick={() => window.Telegram?.WebApp?.close()}>
                 <X size={24} />
@@ -281,7 +268,6 @@ const MainApp = () => {
             <p className="text-gray-500 text-sm font-medium">Ваш умный трекер расходов</p>
         </div>
 
-        {/* Желтый переливающийся баннер */}
         <div className="relative overflow-hidden rounded-[32px] p-5 shadow-lg animate-shimmer cursor-pointer active:scale-95 transition-transform">
             <div className="relative z-10 flex items-center gap-4">
                 <div className="bg-white/25 p-2.5 rounded-2xl backdrop-blur-md border border-white/20">
@@ -294,7 +280,6 @@ const MainApp = () => {
             </div>
         </div>
 
-        {/* Карточка баланса */}
         <div className="bg-[#111111] rounded-[32px] p-8 text-center border border-white/10 shadow-2xl relative overflow-hidden">
             <p className="text-gray-500 text-[11px] font-bold mb-3 uppercase tracking-widest">Текущий баланс</p>
             <h2 className="text-[40px] font-black text-white tracking-tighter flex justify-center items-center gap-3">
@@ -308,7 +293,6 @@ const MainApp = () => {
             </h2>
         </div>
 
-        {/* Сводка за месяц */}
         <div className="bg-[#111111] rounded-[32px] p-6 border border-white/10">
             <p className="text-center text-gray-500 text-[11px] font-bold mb-8 uppercase tracking-widest">Сводка за период</p>
             
@@ -337,7 +321,6 @@ const MainApp = () => {
             </div>
         </div>
 
-        {/* === КНОПКИ НАВИГАЦИИ === */}
         <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
                 <button 
@@ -350,7 +333,8 @@ const MainApp = () => {
                     <span className="text-white font-bold text-sm tracking-wide">Транзакции</span>
                 </button>
 
-                <button className="bg-[#111111] rounded-[28px] p-5 flex flex-col items-center justify-center gap-4 border border-white/10 active:bg-[#1a1a1a] transition-all h-36 relative overflow-hidden group">
+                <button className="bg-[#111111] rounded-[28px] p-5 flex flex-col items-center justify-center gap-4 border border-white/10 active:bg-[#1a1a1a] transition-all h-36 relative overflow-hidden group"
+                >
                     <div className="w-14 h-14 rounded-[20px] flex items-center justify-center bg-black border border-white/5 shadow-[0_0_20px_rgba(249,115,22,0.1)]">
                         <Banknote className="text-orange-500" size={28} strokeWidth={2} />
                     </div>
@@ -366,7 +350,6 @@ const MainApp = () => {
             </button>
         </div>
 
-        {/* === НЕДАВНЯЯ АКТИВНОСТЬ (НОВЫЙ БЛОК) === */}
         <div className="pt-2">
             <div className="flex justify-between items-center mb-4 px-2">
                 <h3 className="text-xl font-bold text-white">Недавняя активность</h3>
@@ -470,7 +453,6 @@ const MainApp = () => {
         {activeTab === 'stats' && <StatsView />}
         {activeTab === 'list' && <TransactionList />}
         
-        {/* Кнопка Добавить работает, не ломая клавиатуру */}
         <AddModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onAdd={handleAddTransaction} />
         
         <div className="fixed bottom-0 left-0 w-full px-5 py-6 bg-gradient-to-t from-black via-black to-transparent z-20">
