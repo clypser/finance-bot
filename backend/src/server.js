@@ -33,7 +33,7 @@ openai = new OpenAI(openaiConfig);
 app.use(cors());
 app.use(express.json());
 
-// === КЛАВИАТУРА ВАЛЮТ ===
+// === МЕНЮ ВАЛЮТ ===
 const getCurrencyMenu = () => Markup.inlineKeyboard([
   [Markup.button.callback('🇺🇿 UZS', 'curr_UZS'), Markup.button.callback('🇺🇸 USD', 'curr_USD')],
   [Markup.button.callback('🇷🇺 RUB', 'curr_RUB'), Markup.button.callback('🇰🇿 KZT', 'curr_KZT')],
@@ -67,24 +67,11 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
   try {
     if (!apiKey) throw new Error("API Key missing");
 
-    // === ПРЕДОБРАБОТКА ТЕКСТА (ЖЕСТКАЯ ЗАМЕНА) ===
-    let cleanText = text;
-    
-    // 1. Заменяем "k", "к" на "000" (например: 200к -> 200000)
-    cleanText = cleanText.replace(/(\d+)\s*[kк]/gi, (match, p1) => p1 + '000');
-    
-    // 2. Заменяем "m", "м", "млн" на "000000" (например: 5млн -> 5000000)
-    cleanText = cleanText.replace(/(\d+)\s*(m|м|млн)/gi, (match, p1) => p1 + '000000');
-
-    console.log(`Original: "${text}" -> Clean: "${cleanText}"`); // Лог для проверки
-
     const prompt = `
-      You are a transaction parser.
-      Input text: "${cleanText}"
-      User Currency: "${userCurrency}"
+      Analyze transaction: "${text}".
+      User Default Currency: ${userCurrency}.
       
       GOAL: Extract Amount, Type, Category, and Currency.
-      
       RULES:
       1. Extract Amount (number).
       2. Extract Currency (string, default to ${userCurrency}).
@@ -108,13 +95,11 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
     return JSON.parse(content);
   } catch (e) {
     console.error("AI Error:", e);
-    // Возвращаем пустой объект, чтобы обработать это ниже
-    return {};
+    throw e;
   }
 };
 
-// --- BOT COMMANDS ---
-
+// --- BOT ---
 bot.start(async (ctx) => {
   const { id, first_name, username } = ctx.from;
   try {
@@ -124,24 +109,25 @@ bot.start(async (ctx) => {
       create: { telegramId: BigInt(id), firstName: first_name, username, currency: 'UZS' }
     });
     
-    await ctx.reply(`Привет, ${first_name}! 👋\nЯ твой финансовый помощник (GPT-4o).\n\nТвоя текущая валюта: <b>${user.currency}</b>.\nЕсли хочешь изменить её, нажми на кнопку ниже или введи команду /currency.`, {
+    await ctx.reply(`Привет! Твоя валюта: <b>${user.currency}</b>.`, {
         parse_mode: 'HTML',
         ...getCurrencyMenu()
     });
 
-    await ctx.reply('Нажми кнопку ниже, чтобы открыть графики 👇', 
-      Markup.keyboard([[Markup.button.webApp('📊 Моя статистика', process.env.WEBAPP_URL)]]).resize()
+    await ctx.reply('Открыть графики 👇', 
+      Markup.keyboard([[Markup.button.webApp('📊 Статистика', process.env.WEBAPP_URL)]]).resize()
     );
   } catch (e) { console.error(e); }
 });
 
 bot.command('currency', async (ctx) => {
-    await ctx.reply('Выберите основную валюту для учета:', getCurrencyMenu());
+    await ctx.reply('Выберите валюту:', getCurrencyMenu());
 });
 
 bot.action(/^curr_(.+)$/, async (ctx) => {
     const newCurrency = ctx.match[1];
     const userId = ctx.from.id;
+    console.log(`🔄 User ${userId} changing currency to ${newCurrency}`);
     
     try {
         await prisma.user.update({
@@ -149,29 +135,25 @@ bot.action(/^curr_(.+)$/, async (ctx) => {
             data: { currency: newCurrency }
         });
         
-        await ctx.answerCbQuery(`Валюта изменена на ${newCurrency}`);
-        await ctx.editMessageText(`✅ Готово! Твоя основная валюта теперь: <b>${newCurrency}</b>.\n\nТеперь все суммы без указания значка (например "обед 500") я буду считать в ${newCurrency}.`, { parse_mode: 'HTML' });
+        await ctx.answerCbQuery(`OK: ${newCurrency}`);
+        await ctx.editMessageText(`✅ Валюта обновлена: <b>${newCurrency}</b>`, { parse_mode: 'HTML' });
     } catch (e) {
         console.error("Update currency error:", e);
-        await ctx.answerCbQuery("Ошибка обновления.");
+        await ctx.answerCbQuery("Ошибка.");
     }
 });
 
-// Обработчик текста
 bot.on('text', async (ctx) => {
   try {
     const userId = BigInt(ctx.from.id);
     const user = await prisma.user.findUnique({ where: { telegramId: userId } });
     if (!user) return ctx.reply('Нажми /start');
     
-    ctx.sendChatAction('typing');
-
     const currentCurrency = user.currency || 'UZS';
     const result = await analyzeText(ctx.message.text, currentCurrency);
     
-    // === ЗАЩИТА ОТ ПУСТЫХ СООБЩЕНИЙ ===
     if (!result || !result.amount) {
-        return ctx.reply(`⚠️ Не вижу сумму. Ответ AI:\n\n${JSON.stringify(result, null, 2)}\n\nПопробуйте написать: "200 ${currentCurrency}"`);
+        return ctx.reply('⚠️ Не вижу сумму.');
     }
 
     const finalCurrency = result.currency || currentCurrency;
@@ -189,35 +171,47 @@ bot.on('text', async (ctx) => {
 
     const emoji = getCategoryEmoji(result.category);
     const sign = result.type === 'expense' ? '-' : '+';
-    
     ctx.reply(`✅ ${sign}${result.amount.toLocaleString()} ${finalCurrency} | ${emoji} ${result.category}`);
-
   } catch (e) {
-    console.error("Bot Error:", e);
     ctx.reply(`❌ Ошибка: ${e.message}`);
   }
 });
 
 bot.launch();
 
-// --- API ---
+// --- API ROUTES ---
 const getUserId = async (req) => {
   const tid = req.headers['x-telegram-id'];
+  // !!! ЛОГ ДИАГНОСТИКИ !!!
+  console.log(`🔑 Auth request with header x-telegram-id: ${tid}`);
+  
   if (!tid) return null;
   try {
     const telegramId = BigInt(tid);
     let user = await prisma.user.findUnique({ where: { telegramId } });
     if (!user && tid === '123456789') {
+        console.log("Creating DEMO user");
         user = await prisma.user.create({ data: { telegramId, firstName: "Demo", username: "demo", currency: "UZS" }});
     }
     return user ? user.id : null;
-  } catch (e) { return null; }
+  } catch (e) { 
+    console.error("Auth parsing error:", e);
+    return null; 
+  }
 };
 
 app.get('/stats/:period', async (req, res) => {
   try {
     const userId = await getUserId(req);
-    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    if (!userId) {
+        console.log("❌ Unauthorized access to stats");
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    // !!! ЛОГ ДИАГНОСТИКИ !!!
+    console.log(`📊 Stats requested for User ID: ${userId}. Currency in DB: ${user?.currency}`);
+
     const { period } = req.params;
     const now = new Date();
     let dateFilter = {};
@@ -226,9 +220,6 @@ app.get('/stats/:period', async (req, res) => {
     if (period === 'month') dateFilter = { gte: startOfMonth(now), lte: endOfMonth(now) };
 
     const transactions = await prisma.transaction.findMany({ where: { userId, date: dateFilter }, orderBy: { date: 'desc' } });
-    
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-
     const stats = transactions.reduce((acc, curr) => {
       if (curr.type === 'expense') acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
       return acc;
@@ -239,29 +230,21 @@ app.get('/stats/:period', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// НОВЫЙ МАРШРУТ: Удаление транзакции
 app.delete('/transaction/:id', async (req, res) => {
   try {
     const userId = await getUserId(req);
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-    
     const { id } = req.params;
-    const transaction = await prisma.transaction.findFirst({ where: { id: parseInt(id), userId } });
-
-    if (!transaction) return res.status(404).json({ error: 'Not found' });
-
     await prisma.transaction.delete({ where: { id: parseInt(id) } });
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// НОВЫЙ МАРШРУТ: Ручное добавление транзакции
 app.post('/transaction/add', async (req, res) => {
   try {
     const userId = await getUserId(req);
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-    
-    const { amount, category, type, description, date } = req.body;
+    const { amount, category, type, description } = req.body;
     const user = await prisma.user.findUnique({ where: { id: userId } });
     
     const newTransaction = await prisma.transaction.create({
@@ -271,11 +254,9 @@ app.post('/transaction/add', async (req, res) => {
             type,
             description,
             currency: user.currency || 'UZS',
-            date: date ? new Date(date) : new Date(),
             userId
         }
     });
-
     res.json(newTransaction);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
