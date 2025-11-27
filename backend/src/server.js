@@ -67,9 +67,17 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
   try {
     if (!apiKey) throw new Error("API Key missing");
 
-    // === ФИКС 1000: Заменяем 'k'/'к' на '000' вручную ===
-    // Это гарантирует, что AI увидит "200000", а не "200к"
-    const cleanText = text.replace(/(\d+)[kк]/gi, '$1000');
+    // === ПРЕДОБРАБОТКА ТЕКСТА (ЖЕСТКАЯ ЗАМЕНА) ===
+    let cleanText = text;
+    
+    // 1. Заменяем "k", "к" на "000" (например: 200к -> 200000)
+    // Используем функцию (match, p1), чтобы точно склеить цифры
+    cleanText = cleanText.replace(/(\d+)\s*[kк]/gi, (match, p1) => p1 + '000');
+    
+    // 2. Заменяем "m", "м", "млн" на "000000" (например: 5млн -> 5000000)
+    cleanText = cleanText.replace(/(\d+)\s*(m|м|млн)/gi, (match, p1) => p1 + '000000');
+
+    console.log(`Original: "${text}" -> Clean: "${cleanText}"`); // Лог для проверки
 
     const prompt = `
       You are a transaction parser.
