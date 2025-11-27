@@ -289,7 +289,7 @@ const MainApp = () => {
                 <X size={24} />
             </button>
             <div className="text-center">
-                <h1 className="text-lg font-bold text-white tracking-wide">Theo AI</h1>
+                <h1 className="text-lg font-bold text-white tracking-wide">Loomy AI</h1>
             </div>
             <div className="w-8"></div>
         </div>
@@ -306,7 +306,7 @@ const MainApp = () => {
                     <Crown className="text-black" size={26} strokeWidth={2.5} />
                 </div>
                 <div>
-                    <h3 className="font-extrabold text-black text-[15px] leading-tight">Theo AI Pro — 7 дней бесплатно</h3>
+                    <h3 className="font-extrabold text-black text-[15px] leading-tight">Loomy AI Pro — 7 дней бесплатно</h3>
                     <p className="text-black/70 text-[11px] font-bold mt-0.5 uppercase tracking-wide">Без карты • Авто-отмена</p>
                 </div>
             </div>
