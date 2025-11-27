@@ -43,51 +43,73 @@ const getCategoryEmoji = (category) => {
     'Аренда': '🔑', 'Одежда': '👕', 'Красота': '💇', 'Спорт': '⚽',
     'Подарки': '🎁', 'Техника': '💻', 'Табак': '🚬', 'Прочее': '📦'
   };
-  // Ищем частичное совпадение
   for (const key in map) {
     if (category && category.toLowerCase().includes(key.toLowerCase())) return map[key];
   }
   return '✨';
 };
 
-// --- AI HELPERS (УЛУЧШЕННЫЙ ПРОМПТ С ПРИМЕРАМИ) ---
+// --- AI HELPERS (С РУЧНОЙ КОРРЕКЦИЕЙ) ---
 const analyzeText = async (text, currency = 'UZS') => {
   try {
     if (!apiKey) throw new Error("API Key missing");
 
+    // 1. Сначала пробуем AI
     const prompt = `
-      You are a financial parser. Analyze text: "${text}". Default currency: ${currency}.
+      Act as a strict financial parser. Analyze text: "${text}". Currency: ${currency}.
       
-      Step 1: Extract Amount. "25k" = 25000.
-      Step 2: Determine Type (expense/income).
-      Step 3: Pick Category from LIST ONLY.
-
-      CATEGORY LIST:
-      [Еда, Продукты, Такси, Транспорт, Зарплата, Дивиденды, Вклады, Здоровье, Развлечения, Кафе, Связь, Дом, Одежда, Техника, Табак, Прочее]
-
-      EXAMPLES:
-      - "обед 50к" -> {"amount": 50000, "category": "Еда", "type": "expense"}
-      - "зп 1000000" -> {"amount": 1000000, "category": "Зарплата", "type": "income"}
-      - "аванс 500" -> {"amount": 500, "category": "Зарплата", "type": "income"}
-      - "вклад 1000" -> {"amount": 1000, "category": "Вклады", "type": "expense"}
-      - "дивиденды 50к" -> {"amount": 50000, "category": "Дивиденды", "type": "income"}
-      - "сигареты 20к" -> {"amount": 20000, "category": "Табак", "type": "expense"}
+      RULES:
+      1. Extract Amount (e.g. "25k" -> 25000).
+      2. Determine Category based on KEYWORDS:
+         - "зп", "зарплата", "аванс" -> "Зарплата" (Income)
+         - "вклад", "депозит" -> "Вклады" (Expense or Income depending on context, usually Expense if putting money in)
+         - "дивиденды", "проценты" -> "Дивиденды" (Income)
+         - "такси", "яндекс" -> "Такси" (Expense)
+         - "продукты", "магазин" -> "Продукты" (Expense)
+         - "сигареты", "табак" -> "Табак" (Expense)
+         - "обед", "ужин", "кафе" -> "Еда" (Expense)
       
-      Return JSON only.
+      3. If no keyword matches, use "Прочее". DO NOT DEFAULT TO FOOD unless it is food.
+
+      Return JSON: {"amount": 100, "category": "CategoryName", "type": "expense", "currency": "UZS"}
     `;
 
     const completion = await openai.chat.completions.create({
       messages: [
-        { role: "system", content: "Output JSON only." },
+        { role: "system", content: "You are a JSON generator. Output only JSON." },
         { role: "user", content: prompt }
       ],
       model: "gpt-3.5-turbo",
       response_format: { type: "json_object" },
-      temperature: 0.3 // Делаем его менее "творческим" и более точным
+      temperature: 0.0 // Максимальная строгость, ноль фантазии
     });
 
     const content = completion.choices[0].message.content;
-    return JSON.parse(content);
+    let result = JSON.parse(content);
+
+    // 2. РУЧНАЯ СТРАХОВКА (Если AI все равно тупит)
+    // Мы принудительно исправляем категорию, если видим ключевые слова
+    const lowerText = text.toLowerCase();
+    
+    if (lowerText.includes('зп') || lowerText.includes('зарплата') || lowerText.includes('аванс')) {
+        result.category = 'Зарплата';
+        result.type = 'income';
+    } else if (lowerText.includes('вклад') || lowerText.includes('депозит') || lowerText.includes('копилка')) {
+        result.category = 'Вклады';
+        // Обычно пополнение вклада - это расход из кошелька, но накопление. 
+        // Если хотите считать это просто переводом - можно настроить иначе.
+        // Пока оставим как решил AI, или форсируем expense если это пополнение
+        if (result.type === 'income') result.type = 'expense'; // Пополнение вклада
+    } else if (lowerText.includes('дивиденд') || lowerText.includes('процент')) {
+        result.category = 'Дивиденды';
+        result.type = 'income';
+    } else if (lowerText.includes('сигарет') || lowerText.includes('табак')) {
+        result.category = 'Табак';
+        result.type = 'expense';
+    }
+
+    return result;
+
   } catch (e) {
     console.error("AI Error:", e);
     throw new Error(`AI Error: ${e.message}`);
@@ -104,7 +126,7 @@ bot.start(async (ctx) => {
       create: { telegramId: BigInt(id), firstName: first_name, username, currency: 'UZS' }
     });
     
-    ctx.reply('Логика обновлена! Я научился различать ЗП, вклады и еду. Пробуй!', 
+    ctx.reply('Логика исправлена! Теперь "ЗП" и "Вклады" работают точно. Проверяй!', 
       Markup.keyboard([[Markup.button.webApp('📊 Открыть', process.env.WEBAPP_URL)]]).resize()
     );
   } catch (e) { console.error(e); }
@@ -124,7 +146,7 @@ bot.on('text', async (ctx) => {
         currency: result.currency,
         category: result.category,
         type: result.type,
-        description: result.description,
+        description: result.description || result.category, // Fallback if description empty
         userId: user.id
       }
     });
