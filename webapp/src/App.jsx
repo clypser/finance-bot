@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Wallet, PieChart as PieIcon, Plus, ArrowUpRight, ArrowDownLeft, Target, Crown, X, CreditCard, Banknote, BarChart3, ChevronRight } from 'lucide-react';
+import { Wallet, PieChart as PieIcon, Plus, ArrowUpRight, ArrowDownLeft, Target, Crown, X, CreditCard, Banknote, BarChart3, ChevronRight, Trash2, Calendar, FileText } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 const API_URL = ''; 
@@ -41,6 +41,13 @@ const MainApp = () => {
   const [data, setData] = useState({ transactions: [], chartData: [], total: 0 });
   const [loading, setLoading] = useState(false);
   const [userName, setUserName] = useState('User');
+  
+  // Состояния для формы добавления
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [newAmount, setNewAmount] = useState('');
+  const [newCategory, setNewCategory] = useState('Прочее');
+  const [newType, setNewType] = useState('expense');
+  const [newDescription, setNewDescription] = useState('');
 
   useEffect(() => {
     const tg = window.Telegram?.WebApp;
@@ -77,6 +84,47 @@ const MainApp = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDelete = async (id) => {
+      if(!confirm("Удалить эту запись?")) return;
+      
+      try {
+          const userId = getTelegramUserId();
+          await fetch(`${API_URL}/transaction/${id}`, {
+              method: 'DELETE',
+              headers: { 'x-telegram-id': userId }
+          });
+          fetchStats(); // Обновляем список
+      } catch (e) {
+          alert("Ошибка удаления");
+      }
+  };
+
+  const handleAddTransaction = async (e) => {
+      e.preventDefault();
+      try {
+          const userId = getTelegramUserId();
+          await fetch(`${API_URL}/transaction/add`, {
+              method: 'POST',
+              headers: { 
+                  'x-telegram-id': userId,
+                  'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                  amount: newAmount,
+                  category: newCategory,
+                  type: newType,
+                  description: newDescription
+              })
+          });
+          setIsAddModalOpen(false);
+          setNewAmount('');
+          setNewDescription('');
+          fetchStats();
+      } catch (e) {
+          alert("Ошибка добавления");
+      }
   };
 
   useEffect(() => {
@@ -227,6 +275,7 @@ const MainApp = () => {
                                     <p className="font-bold text-white text-sm">{t.category}</p>
                                     <p className="text-[10px] text-gray-500 mt-0.5 font-medium uppercase">
                                         {new Date(t.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+                                        {t.description && t.description !== t.category && ` • ${t.description}`}
                                     </p>
                                 </div>
                             </div>
@@ -267,20 +316,100 @@ const MainApp = () => {
               <div className={`p-3.5 rounded-2xl ${t.type === 'expense' ? 'bg-red-500/10 text-red-500' : 'bg-green-500/10 text-green-500'}`}>
                 {t.type === 'expense' ? <ArrowDownLeft size={22} strokeWidth={2.5} /> : <ArrowUpRight size={22} strokeWidth={2.5} />}
               </div>
-              <div>
-                <p className="font-bold text-white text-[15px]">{t.category}</p>
-                <p className="text-xs text-gray-500 mt-1 font-medium">
-                    {new Date(t.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
-                </p>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-white text-[15px] truncate">{t.category}</p>
+                <div className="flex items-center gap-2 mt-1">
+                    <p className="text-xs text-gray-500 font-medium">
+                        {new Date(t.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
+                    </p>
+                    {t.description && t.description !== t.category && (
+                        <p className="text-xs text-gray-600 truncate max-w-[120px]">
+                            • {t.description}
+                        </p>
+                    )}
+                </div>
               </div>
             </div>
-            <span className={`font-black text-[17px] tracking-tight ${t.type === 'expense' ? 'text-white' : 'text-green-500'}`}>
-              {t.type === 'expense' ? '-' : '+'}{t.amount.toLocaleString()} 
-            </span>
+            <div className="flex flex-col items-end gap-2">
+                <span className={`font-black text-[17px] tracking-tight ${t.type === 'expense' ? 'text-white' : 'text-green-500'}`}>
+                {t.type === 'expense' ? '-' : '+'}{t.amount.toLocaleString()} 
+                </span>
+                <button 
+                    onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }}
+                    className="text-gray-600 hover:text-red-500 p-1 transition-colors"
+                >
+                    <Trash2 size={16} />
+                </button>
+            </div>
           </div>
         ))
       )}
     </div>
+  );
+
+  const AddModal = () => (
+      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#111111] w-full max-w-sm rounded-[32px] border border-white/10 p-6 space-y-6">
+              <div className="flex justify-between items-center">
+                  <h3 className="text-xl font-bold text-white">Добавить запись</h3>
+                  <button onClick={() => setIsAddModalOpen(false)}><X className="text-gray-500" /></button>
+              </div>
+              
+              <form onSubmit={handleAddTransaction} className="space-y-4">
+                  <div>
+                      <label className="text-gray-500 text-xs uppercase font-bold ml-1">Тип</label>
+                      <div className="flex bg-black rounded-xl p-1 mt-1 border border-white/5">
+                          <button type="button" onClick={() => setNewType('expense')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newType === 'expense' ? 'bg-white text-black' : 'text-gray-500'}`}>Расход</button>
+                          <button type="button" onClick={() => setNewType('income')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newType === 'income' ? 'bg-white text-black' : 'text-gray-500'}`}>Доход</button>
+                      </div>
+                  </div>
+
+                  <div>
+                      <label className="text-gray-500 text-xs uppercase font-bold ml-1">Сумма</label>
+                      <input 
+                          type="number" 
+                          value={newAmount}
+                          onChange={(e) => setNewAmount(e.target.value)}
+                          placeholder="0"
+                          className="w-full bg-black border border-white/5 rounded-xl p-4 text-white text-xl font-bold focus:border-green-500 outline-none transition-colors"
+                          required
+                      />
+                  </div>
+
+                  <div>
+                      <label className="text-gray-500 text-xs uppercase font-bold ml-1">Категория</label>
+                      <select 
+                          value={newCategory}
+                          onChange={(e) => setNewCategory(e.target.value)}
+                          className="w-full bg-black border border-white/5 rounded-xl p-4 text-white font-medium outline-none appearance-none"
+                      >
+                          <option>Продукты</option>
+                          <option>Еда вне дома</option>
+                          <option>Такси</option>
+                          <option>Транспорт</option>
+                          <option>Дом</option>
+                          <option>Зарплата</option>
+                          <option>Прочее</option>
+                      </select>
+                  </div>
+
+                  <div>
+                      <label className="text-gray-500 text-xs uppercase font-bold ml-1">Комментарий</label>
+                      <input 
+                          type="text" 
+                          value={newDescription}
+                          onChange={(e) => setNewDescription(e.target.value)}
+                          placeholder="Например: обед в офисе"
+                          className="w-full bg-black border border-white/5 rounded-xl p-4 text-white font-medium focus:border-green-500 outline-none transition-colors"
+                      />
+                  </div>
+
+                  <button type="submit" className="w-full bg-[#00E08F] hover:bg-[#00c980] text-black font-extrabold text-lg py-4 rounded-[20px] mt-4">
+                      Сохранить
+                  </button>
+              </form>
+          </div>
+      </div>
   );
 
   // --- ГЛАВНАЯ ОБЕРТКА ---
@@ -291,15 +420,16 @@ const MainApp = () => {
       <div className="max-w-md mx-auto min-h-screen relative pb-28">
         {activeTab === 'stats' && <StatsView />}
         {activeTab === 'list' && <TransactionList />}
-        {activeTab === 'add' && window.Telegram?.WebApp?.close()} 
+        
+        {isAddModalOpen && <AddModal />}
         
         {/* Нижняя кнопка-экшен */}
         <div className="fixed bottom-0 left-0 w-full px-5 py-6 bg-gradient-to-t from-black via-black to-transparent z-20">
             <button 
-                onClick={() => window.Telegram?.WebApp?.close()} 
-                className="w-full bg-[#00E08F] hover:bg-[#00c980] text-black font-extrabold text-[17px] py-4 rounded-[24px] active:scale-95 transition-all shadow-[0_8px_30px_rgba(0,224,143,0.25)] tracking-wide"
+                onClick={() => setIsAddModalOpen(true)} 
+                className="w-full bg-[#00E08F] hover:bg-[#00c980] text-black font-extrabold text-[17px] py-4 rounded-[24px] active:scale-95 transition-all shadow-[0_8px_30px_rgba(0,224,143,0.25)] tracking-wide flex items-center justify-center gap-2"
             >
-                Добавить транзакцию
+                <Plus strokeWidth={3} size={20} /> Добавить транзакцию
             </button>
         </div>
       </div>
