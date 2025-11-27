@@ -68,23 +68,20 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
     if (!apiKey) throw new Error("API Key missing");
 
     const prompt = `
-      Analyze transaction: "${text}".
-      User Default Currency: ${userCurrency}.
+      You are a transaction parser.
+      Input text: "${text}"
+      User Currency: "${userCurrency}"
       
-      GOAL: Extract Amount, Type, Category, and Currency.
-      
-      RULES:
-      1. "25k" = 25000.
-      2. Type: "income" or "expense".
-      3. Category: Choose STRICTLY from the list.
-      4. Currency: 
-         - Detect from text (e.g. "$100" -> USD).
-         - IF NO currency in text, use Default: "${userCurrency}".
+      Extract:
+      - amount (number)
+      - currency (string, default to ${userCurrency})
+      - category (string, Russian)
+      - type ("income" or "expense")
 
-      CATEGORY LIST:
-      [Еда, Продукты, Такси, Транспорт, Зарплата, Стипендия, Дивиденды, Вклады, Здоровье, Развлечения, Кафе, Связь, Дом, Одежда, Техника, Табак, Прочее]
+      Categories: [Еда, Продукты, Такси, Транспорт, Зарплата, Стипендия, Дивиденды, Вклады, Здоровье, Развлечения, Кафе, Связь, Дом, Одежда, Техника, Табак, Прочее]
 
-      Return JSON only.
+      Output JSON ONLY. No markdown.
+      Example: {"amount": 200, "currency": "UZS", "category": "Еда", "type": "expense"}
     `;
 
     const completion = await openai.chat.completions.create({
@@ -95,10 +92,10 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
     });
 
     const content = completion.choices[0].message.content;
+    console.log("AI Raw Response:", content); // Логируем ответ для проверки
     return JSON.parse(content);
   } catch (e) {
     console.error("AI Error:", e);
-    // ВАЖНО: Пробрасываем реальную ошибку, чтобы пользователь её увидел!
     throw e;
   }
 };
@@ -156,14 +153,17 @@ bot.on('text', async (ctx) => {
     
     ctx.sendChatAction('typing');
 
-    // Теперь, если здесь будет ошибка (например, Прокси сдох), она вылетит в catch
-    const result = await analyzeText(ctx.message.text, user.currency);
+    // Берем валюту из профиля или ставим UZS по умолчанию, чтобы AI не сходил с ума
+    const currentCurrency = user.currency || 'UZS';
+    const result = await analyzeText(ctx.message.text, currentCurrency);
     
+    // === ОТЛАДКА ===
+    // Если суммы нет, показываем, что именно вернул AI, чтобы понять причину
     if (!result || !result.amount) {
-        return ctx.reply('⚠️ Я понял текст, но не нашел сумму. Попробуйте написать число, например: "Обед 500".');
+        return ctx.reply(`⚠️ Не вижу сумму. Ответ AI:\n\n${JSON.stringify(result, null, 2)}\n\nПопробуйте написать: "200 ${currentCurrency}"`);
     }
 
-    const finalCurrency = result.currency || user.currency || 'UZS';
+    const finalCurrency = result.currency || currentCurrency;
 
     await prisma.transaction.create({
       data: {
@@ -183,8 +183,7 @@ bot.on('text', async (ctx) => {
 
   } catch (e) {
     console.error("Bot Error:", e);
-    // Теперь бот напишет РЕАЛЬНУЮ причину
-    ctx.reply(`❌ Ошибка подключения к AI: ${e.message}\n\nВозможно, проблема с Прокси или Ключом.`);
+    ctx.reply(`❌ Ошибка подключения: ${e.message}`);
   }
 });
 
