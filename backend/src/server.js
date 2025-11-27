@@ -103,7 +103,7 @@ const getCategoryEmoji = (category) => {
   return '✨';
 };
 
-// --- AI HELPERS (СУПЕР-ПРОМПТ v2) ---
+// --- AI HELPERS (СУПЕР-ПРОМПТ v3 - GPT-4o) ---
 const analyzeText = async (text, currency = 'UZS') => {
   try {
     if (!apiKey) throw new Error("API Key missing");
@@ -154,6 +154,7 @@ const analyzeText = async (text, currency = 'UZS') => {
         { role: "system", content: "You are a smart financial assistant. Output JSON only." },
         { role: "user", content: prompt }
       ],
+      // 👇 СТАВИМ САМУЮ УМНУЮ МОДЕЛЬ
       model: "gpt-4o", 
       response_format: { type: "json_object" },
       temperature: 0.1 
@@ -177,7 +178,8 @@ bot.start(async (ctx) => {
       create: { telegramId: BigInt(id), firstName: first_name, username, currency: 'UZS' }
     });
     
-    ctx.reply('Мозг обновлен (GPT-4o)! Я выучил, что такое стипендия. Проверяй!', 
+    // 👇 НОВОЕ СООБЩЕНИЕ, ЧТОБЫ ВЫ ПОНЯЛИ, ЧТО СЕРВЕР ОБНОВИЛСЯ
+    ctx.reply('Я перешел на GPT-4o! Это мой максимальный интеллект. Жду: "стипендия 500к"', 
       Markup.keyboard([[Markup.button.webApp('📊 Открыть', process.env.WEBAPP_URL)]]).resize()
     );
   } catch (e) { console.error(e); }
@@ -189,6 +191,7 @@ bot.on('text', async (ctx) => {
     const user = await prisma.user.findUnique({ where: { telegramId: userId } });
     if (!user) return ctx.reply('Нажми /start');
     
+    // Статус "печатает"
     ctx.sendChatAction('typing');
 
     const result = await analyzeText(ctx.message.text, user.currency);
