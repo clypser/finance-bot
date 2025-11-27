@@ -233,6 +233,60 @@ app.get('/stats/:period', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// НОВЫЙ МАРШРУТ: Удаление транзакции
+app.delete('/transaction/:id', async (req, res) => {
+  try {
+    const userId = await getUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    
+    const { id } = req.params;
+    
+    // Проверяем, принадлежит ли транзакция этому пользователю, перед удалением
+    const transaction = await prisma.transaction.findFirst({
+        where: { id: parseInt(id), userId }
+    });
+
+    if (!transaction) return res.status(404).json({ error: 'Not found' });
+
+    await prisma.transaction.delete({
+        where: { id: parseInt(id) }
+    });
+
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// НОВЫЙ МАРШРУТ: Ручное добавление транзакции
+app.post('/transaction/add', async (req, res) => {
+  try {
+    const userId = await getUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    
+    const { amount, category, type, description, date } = req.body;
+    
+    // Получаем валюту пользователя
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    
+    const newTransaction = await prisma.transaction.create({
+        data: {
+            amount: parseFloat(amount),
+            category,
+            type,
+            description,
+            currency: user.currency || 'UZS',
+            date: date ? new Date(date) : new Date(),
+            userId
+        }
+    });
+
+    res.json(newTransaction);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log(`Server running on ${PORT}`));
 process.once('SIGINT', () => bot.stop('SIGINT'));
