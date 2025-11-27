@@ -98,8 +98,7 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
     return JSON.parse(content);
   } catch (e) {
     console.error("AI Error:", e);
-    // ВАЖНО: Мы пробрасываем ошибку дальше, чтобы пользователь её увидел,
-    // а не просто "Я не нашел сумму".
+    // ВАЖНО: Пробрасываем реальную ошибку, чтобы пользователь её увидел!
     throw e;
   }
 };
