@@ -10,6 +10,9 @@ const app = express();
 const prisma = new PrismaClient();
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
+// === ЛОГ ЗАПУСКА (УНИКАЛЬНЫЙ МАРКЕР) ===
+console.log("🚀 FORCE UPDATE v555: Checking Currency Logic...");
+
 // === НАСТРОЙКИ ===
 const apiKey = process.env.OPENAI_API_KEY;
 const proxyUrl = process.env.PROXY_URL; 
@@ -129,8 +132,7 @@ bot.action(/^curr_(.+)$/, async (ctx) => {
     const newCurrency = ctx.match[1];
     const userId = ctx.from.id;
     
-    // ЛОГ: Смена валюты
-    console.log(`🔄 [Currency Change] User ${userId} selected: ${newCurrency}`);
+    console.log(`🔄 [LOG v555] User ${userId} changing currency to ${newCurrency}`);
     
     try {
         const updatedUser = await prisma.user.update({
@@ -138,17 +140,16 @@ bot.action(/^curr_(.+)$/, async (ctx) => {
             data: { currency: newCurrency }
         });
         
-        console.log(`✅ [DB Update] User ${userId} currency updated to: ${updatedUser.currency}`);
+        console.log(`✅ [LOG v555] DB Update Success: ${updatedUser.currency}`);
         
         await ctx.answerCbQuery(`OK: ${newCurrency}`);
         await ctx.editMessageText(`✅ Валюта обновлена: <b>${newCurrency}</b>`, { parse_mode: 'HTML' });
     } catch (e) {
-        console.error("❌ [Error] Update currency failed:", e);
+        console.error("❌ [LOG v555] Update failed:", e);
         await ctx.answerCbQuery("Ошибка.");
     }
 });
 
-// === ОБРАБОТЧИК ТЕКСТА ===
 bot.on('text', async (ctx) => {
   try {
     const userId = BigInt(ctx.from.id);
@@ -157,8 +158,8 @@ bot.on('text', async (ctx) => {
     
     const currentCurrency = user.currency || 'UZS';
     
-    // ЛОГ: Обработка текста
-    console.log(`📝 [New Text] User ${userId} wrote: "${ctx.message.text}". User Currency in DB: ${currentCurrency}`);
+    // ЛОГ ДЛЯ ПРОВЕРКИ
+    console.log(`📝 [LOG v555] Processing text in currency: ${currentCurrency}`);
 
     const result = await analyzeText(ctx.message.text, currentCurrency);
     
@@ -167,9 +168,6 @@ bot.on('text', async (ctx) => {
     }
 
     const finalCurrency = result.currency || currentCurrency;
-    
-    // ЛОГ: Результат AI
-    console.log(`🤖 [AI Result] Amount: ${result.amount}, Currency: ${finalCurrency} (AI decided)`);
 
     await prisma.transaction.create({
       data: {
