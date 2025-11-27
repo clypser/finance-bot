@@ -41,52 +41,49 @@ const getCategoryEmoji = (category) => {
     'Здоровье': '💊', 'Аптека': '🏥', 'Развлечения': '🍿', 'Кафе': '☕',
     'Ресторан': '🍝', 'Связь': '📱', 'Интернет': '🌐', 'Дом': '🏠',
     'Аренда': '🔑', 'Одежда': '👕', 'Красота': '💇', 'Спорт': '⚽',
-    'Подарки': '🎁', 'Техника': '💻', 'Прочее': '📦'
+    'Подарки': '🎁', 'Техника': '💻', 'Табак': '🚬', 'Прочее': '📦'
   };
-  // Ищем частичное совпадение (например, "Кафе и рестораны" -> "Кафе")
+  // Ищем частичное совпадение
   for (const key in map) {
     if (category && category.toLowerCase().includes(key.toLowerCase())) return map[key];
   }
   return '✨';
 };
 
-// --- AI HELPERS (УЛУЧШЕННЫЙ ПРОМПТ) ---
+// --- AI HELPERS (УЛУЧШЕННЫЙ ПРОМПТ С ПРИМЕРАМИ) ---
 const analyzeText = async (text, currency = 'UZS') => {
   try {
     if (!apiKey) throw new Error("API Key missing");
 
     const prompt = `
-      Analyze financial text: "${text}". User currency: ${currency}.
+      You are a financial parser. Analyze text: "${text}". Default currency: ${currency}.
       
-      STRICT RULES:
-      1. "25k" = 25000.
-      2. Detect TYPE: "expense" (spending) or "income" (earning).
-         - Keywords for INCOME: "зп", "зарплата", "аванс", "дивиденды", "пришло", "получил".
-      
-      3. Detect CATEGORY from list: 
-         - Еда (food, lunch, dinner)
-         - Такси (taxi, uber)
-         - Продукты (groceries, market)
-         - Зарплата (salary, wage, zp)
-         - Дивиденды (dividends, investment)
-         - Дом (rent, utilities)
-         - Развлечения (cinema, games)
-         - Здоровье (pharmacy, doctor)
-         - Прочее (if unsure)
-      
-      4. IF text is just "зп 1000", assume category "Зарплата" and type "income".
-      5. IF text is just "50000", assume category "Прочее" and type "expense".
+      Step 1: Extract Amount. "25k" = 25000.
+      Step 2: Determine Type (expense/income).
+      Step 3: Pick Category from LIST ONLY.
 
-      Return JSON: {"amount": 100, "category": "CategoryName", "type": "expense", "currency": "UZS", "description": "original text"}
+      CATEGORY LIST:
+      [Еда, Продукты, Такси, Транспорт, Зарплата, Дивиденды, Вклады, Здоровье, Развлечения, Кафе, Связь, Дом, Одежда, Техника, Табак, Прочее]
+
+      EXAMPLES:
+      - "обед 50к" -> {"amount": 50000, "category": "Еда", "type": "expense"}
+      - "зп 1000000" -> {"amount": 1000000, "category": "Зарплата", "type": "income"}
+      - "аванс 500" -> {"amount": 500, "category": "Зарплата", "type": "income"}
+      - "вклад 1000" -> {"amount": 1000, "category": "Вклады", "type": "expense"}
+      - "дивиденды 50к" -> {"amount": 50000, "category": "Дивиденды", "type": "income"}
+      - "сигареты 20к" -> {"amount": 20000, "category": "Табак", "type": "expense"}
+      
+      Return JSON only.
     `;
 
     const completion = await openai.chat.completions.create({
       messages: [
-        { role: "system", content: "You are a strict financial parser. Output JSON only." },
+        { role: "system", content: "Output JSON only." },
         { role: "user", content: prompt }
       ],
       model: "gpt-3.5-turbo",
-      response_format: { type: "json_object" }
+      response_format: { type: "json_object" },
+      temperature: 0.3 // Делаем его менее "творческим" и более точным
     });
 
     const content = completion.choices[0].message.content;
@@ -107,7 +104,7 @@ bot.start(async (ctx) => {
       create: { telegramId: BigInt(id), firstName: first_name, username, currency: 'UZS' }
     });
     
-    ctx.reply('Я обновил логику! Теперь я понимаю, что "ЗП" — это доход. Попробуй: "зп 5млн"', 
+    ctx.reply('Логика обновлена! Я научился различать ЗП, вклады и еду. Пробуй!', 
       Markup.keyboard([[Markup.button.webApp('📊 Открыть', process.env.WEBAPP_URL)]]).resize()
     );
   } catch (e) { console.error(e); }
