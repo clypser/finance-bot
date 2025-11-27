@@ -49,67 +49,43 @@ const getCategoryEmoji = (category) => {
   return '✨';
 };
 
-// --- AI HELPERS (С РУЧНОЙ КОРРЕКЦИЕЙ) ---
+// --- AI HELPERS (GPT-4o) ---
 const analyzeText = async (text, currency = 'UZS') => {
   try {
     if (!apiKey) throw new Error("API Key missing");
 
-    // 1. Сначала пробуем AI
     const prompt = `
-      Act as a strict financial parser. Analyze text: "${text}". Currency: ${currency}.
+      Analyze transaction: "${text}". Currency: ${currency}.
       
       RULES:
-      1. Extract Amount (e.g. "25k" -> 25000).
-      2. Determine Category based on KEYWORDS:
-         - "зп", "зарплата", "аванс" -> "Зарплата" (Income)
-         - "вклад", "депозит" -> "Вклады" (Expense or Income depending on context, usually Expense if putting money in)
-         - "дивиденды", "проценты" -> "Дивиденды" (Income)
-         - "такси", "яндекс" -> "Такси" (Expense)
-         - "продукты", "магазин" -> "Продукты" (Expense)
-         - "сигареты", "табак" -> "Табак" (Expense)
-         - "обед", "ужин", "кафе" -> "Еда" (Expense)
+      1. "25k" = 25000.
+      2. Determine Type (expense/income).
+      3. Determine Category (Russian).
       
-      3. If no keyword matches, use "Прочее". DO NOT DEFAULT TO FOOD unless it is food.
+      CATEGORY LIST:
+      [Еда, Продукты, Такси, Транспорт, Зарплата, Дивиденды, Вклады, Здоровье, Развлечения, Кафе, Связь, Дом, Одежда, Техника, Табак, Прочее]
 
-      Return JSON: {"amount": 100, "category": "CategoryName", "type": "expense", "currency": "UZS"}
+      EXAMPLES:
+      - "зп 1000" -> {"amount": 1000, "category": "Зарплата", "type": "income"}
+      - "аванс 500" -> {"amount": 500, "category": "Зарплата", "type": "income"}
+      - "вклад 1000" -> {"amount": 1000, "category": "Вклады", "type": "expense"}
+      - "ппп 222" -> {"amount": 222, "category": "Прочее", "type": "expense"}
+      
+      Return JSON.
     `;
 
     const completion = await openai.chat.completions.create({
       messages: [
-        { role: "system", content: "You are a JSON generator. Output only JSON." },
+        { role: "system", content: "You are a smart financial assistant. Output JSON only." },
         { role: "user", content: prompt }
       ],
-      model: "gpt-3.5-turbo",
+      model: "gpt-4o", // <--- САМАЯ УМНАЯ МОДЕЛЬ
       response_format: { type: "json_object" },
-      temperature: 0.0 // Максимальная строгость, ноль фантазии
+      temperature: 0.1 // Минимальная креативность для точности
     });
 
     const content = completion.choices[0].message.content;
-    let result = JSON.parse(content);
-
-    // 2. РУЧНАЯ СТРАХОВКА (Если AI все равно тупит)
-    // Мы принудительно исправляем категорию, если видим ключевые слова
-    const lowerText = text.toLowerCase();
-    
-    if (lowerText.includes('зп') || lowerText.includes('зарплата') || lowerText.includes('аванс')) {
-        result.category = 'Зарплата';
-        result.type = 'income';
-    } else if (lowerText.includes('вклад') || lowerText.includes('депозит') || lowerText.includes('копилка')) {
-        result.category = 'Вклады';
-        // Обычно пополнение вклада - это расход из кошелька, но накопление. 
-        // Если хотите считать это просто переводом - можно настроить иначе.
-        // Пока оставим как решил AI, или форсируем expense если это пополнение
-        if (result.type === 'income') result.type = 'expense'; // Пополнение вклада
-    } else if (lowerText.includes('дивиденд') || lowerText.includes('процент')) {
-        result.category = 'Дивиденды';
-        result.type = 'income';
-    } else if (lowerText.includes('сигарет') || lowerText.includes('табак')) {
-        result.category = 'Табак';
-        result.type = 'expense';
-    }
-
-    return result;
-
+    return JSON.parse(content);
   } catch (e) {
     console.error("AI Error:", e);
     throw new Error(`AI Error: ${e.message}`);
@@ -126,7 +102,7 @@ bot.start(async (ctx) => {
       create: { telegramId: BigInt(id), firstName: first_name, username, currency: 'UZS' }
     });
     
-    ctx.reply('Логика исправлена! Теперь "ЗП" и "Вклады" работают точно. Проверяй!', 
+    ctx.reply('Я перешел на GPT-4o! Теперь я еще умнее. Жду траты!', 
       Markup.keyboard([[Markup.button.webApp('📊 Открыть', process.env.WEBAPP_URL)]]).resize()
     );
   } catch (e) { console.error(e); }
@@ -138,6 +114,9 @@ bot.on('text', async (ctx) => {
     const user = await prisma.user.findUnique({ where: { telegramId: userId } });
     if (!user) return ctx.reply('Нажми /start');
     
+    // Показываем статус "печатает", пока GPT-4 думает
+    ctx.sendChatAction('typing');
+
     const result = await analyzeText(ctx.message.text, user.currency);
     
     await prisma.transaction.create({
@@ -146,7 +125,7 @@ bot.on('text', async (ctx) => {
         currency: result.currency,
         category: result.category,
         type: result.type,
-        description: result.description || result.category, // Fallback if description empty
+        description: result.description,
         userId: user.id
       }
     });
