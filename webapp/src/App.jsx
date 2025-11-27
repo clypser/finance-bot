@@ -35,6 +35,102 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+// === ВЫНЕСЕННЫЙ КОМПОНЕНТ МОДАЛКИ (ЧТОБЫ КЛАВИАТУРА НЕ ПРЫГАЛА) ===
+const AddModal = ({ isOpen, onClose, onAdd }) => {
+  const [newAmount, setNewAmount] = useState('');
+  const [newCategory, setNewCategory] = useState('Прочее');
+  const [newType, setNewType] = useState('expense');
+  const [newDescription, setNewDescription] = useState('');
+
+  // Сбрасываем форму при открытии
+  useEffect(() => {
+      if (isOpen) {
+          setNewAmount('');
+          setNewDescription('');
+          setNewCategory('Прочее');
+          setNewType('expense');
+      }
+  }, [isOpen]);
+
+  const handleSubmit = (e) => {
+      e.preventDefault();
+      onAdd({ 
+          amount: newAmount, 
+          category: newCategory, 
+          type: newType, 
+          description: newDescription 
+      });
+  };
+
+  if (!isOpen) return null;
+
+  return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#111111] w-full max-w-sm rounded-[32px] border border-white/10 p-6 space-y-6">
+              <div className="flex justify-between items-center">
+                  <h3 className="text-xl font-bold text-white">Добавить запись</h3>
+                  <button onClick={onClose}><X className="text-gray-500" /></button>
+              </div>
+              
+              <form onSubmit={handleSubmit} className="space-y-4">
+                  <div>
+                      <label className="text-gray-500 text-xs uppercase font-bold ml-1">Тип</label>
+                      <div className="flex bg-black rounded-xl p-1 mt-1 border border-white/5">
+                          <button type="button" onClick={() => setNewType('expense')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newType === 'expense' ? 'bg-white text-black' : 'text-gray-500'}`}>Расход</button>
+                          <button type="button" onClick={() => setNewType('income')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newType === 'income' ? 'bg-white text-black' : 'text-gray-500'}`}>Доход</button>
+                      </div>
+                  </div>
+
+                  <div>
+                      <label className="text-gray-500 text-xs uppercase font-bold ml-1">Сумма</label>
+                      <input 
+                          type="number" 
+                          value={newAmount}
+                          onChange={(e) => setNewAmount(e.target.value)}
+                          placeholder="0"
+                          className="w-full bg-black border border-white/5 rounded-xl p-4 text-white text-xl font-bold focus:border-green-500 outline-none transition-colors"
+                          required
+                          autoFocus
+                      />
+                  </div>
+
+                  <div>
+                      <label className="text-gray-500 text-xs uppercase font-bold ml-1">Категория</label>
+                      <select 
+                          value={newCategory}
+                          onChange={(e) => setNewCategory(e.target.value)}
+                          className="w-full bg-black border border-white/5 rounded-xl p-4 text-white font-medium outline-none appearance-none"
+                      >
+                          <option>Продукты</option>
+                          <option>Еда вне дома</option>
+                          <option>Такси</option>
+                          <option>Транспорт</option>
+                          <option>Дом</option>
+                          <option>Зарплата</option>
+                          <option>Прочее</option>
+                      </select>
+                  </div>
+
+                  <div>
+                      <label className="text-gray-500 text-xs uppercase font-bold ml-1">Комментарий</label>
+                      <input 
+                          type="text" 
+                          value={newDescription}
+                          onChange={(e) => setNewDescription(e.target.value)}
+                          placeholder="Например: обед в офисе"
+                          className="w-full bg-black border border-white/5 rounded-xl p-4 text-white font-medium focus:border-green-500 outline-none transition-colors"
+                      />
+                  </div>
+
+                  <button type="submit" className="w-full bg-[#00E08F] hover:bg-[#00c980] text-black font-extrabold text-lg py-4 rounded-[20px] mt-4">
+                      Сохранить
+                  </button>
+              </form>
+          </div>
+      </div>
+  );
+};
+
 const MainApp = () => {
   const [activeTab, setActiveTab] = useState('stats');
   const [period, setPeriod] = useState('month');
@@ -42,13 +138,7 @@ const MainApp = () => {
   const [currency, setCurrency] = useState('UZS'); // Состояние для валюты
   const [loading, setLoading] = useState(false);
   const [userName, setUserName] = useState('User');
-  
-  // Состояния для формы добавления
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [newAmount, setNewAmount] = useState('');
-  const [newCategory, setNewCategory] = useState('Прочее');
-  const [newType, setNewType] = useState('expense');
-  const [newDescription, setNewDescription] = useState('');
 
   useEffect(() => {
     const tg = window.Telegram?.WebApp;
@@ -79,7 +169,12 @@ const MainApp = () => {
       
       const result = await response.json();
       setData(result);
-      if (result.currency) setCurrency(result.currency); // Обновляем валюту
+      
+      // === ФИКС ВАЛЮТЫ ===
+      // Если сервер вернул валюту, обновляем состояние
+      if (result.currency) {
+          setCurrency(result.currency);
+      }
     } catch (err) {
       console.log("No data or offline");
       setData({ transactions: [], chartData: [], total: 0 });
@@ -102,8 +197,7 @@ const MainApp = () => {
       }
   };
 
-  const handleAddTransaction = async (e) => {
-      e.preventDefault();
+  const handleAddTransaction = async (formData) => {
       try {
           const userId = getTelegramUserId();
           await fetch(`${API_URL}/transaction/add`, {
@@ -112,16 +206,9 @@ const MainApp = () => {
                   'x-telegram-id': userId,
                   'Content-Type': 'application/json'
               },
-              body: JSON.stringify({
-                  amount: newAmount,
-                  category: newCategory,
-                  type: newType,
-                  description: newDescription
-              })
+              body: JSON.stringify(formData)
           });
           setIsAddModalOpen(false);
-          setNewAmount('');
-          setNewDescription('');
           fetchStats();
       } catch (e) {
           alert("Ошибка добавления");
@@ -192,7 +279,6 @@ const MainApp = () => {
             <p className="text-center text-gray-500 text-[11px] font-bold mb-8 uppercase tracking-widest">Сводка за период</p>
             
             <div className="flex justify-between items-start mb-2 px-2 relative">
-                {/* Разделитель */}
                 <div className="absolute left-1/2 top-0 bottom-0 w-[1px] bg-white/10 -translate-x-1/2"></div>
 
                 <div className="text-center w-1/2 pr-4">
@@ -209,7 +295,6 @@ const MainApp = () => {
                 </div>
             </div>
 
-            {/* Чистый результат */}
             <div className="text-center pt-6 border-t border-white/10 mt-6">
                  <p className={`text-3xl font-black mb-1 tracking-tight ${displayBalance >= 0 ? 'text-white' : 'text-red-500'}`}>
                     {displayBalance > 0 ? '+' : ''}{displayBalance.toLocaleString()}
@@ -218,10 +303,9 @@ const MainApp = () => {
             </div>
         </div>
 
-        {/* === КНОПКИ НАВИГАЦИИ === */}
+        {/* Кнопки навигации */}
         <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-                {/* Транзакции (Зеленый) */}
                 <button 
                     onClick={() => setActiveTab('list')}
                     className="bg-[#111111] rounded-[28px] p-5 flex flex-col items-center justify-center gap-4 border border-white/10 active:bg-[#1a1a1a] transition-all h-36 relative overflow-hidden group"
@@ -232,7 +316,6 @@ const MainApp = () => {
                     <span className="text-white font-bold text-sm tracking-wide">Транзакции</span>
                 </button>
 
-                {/* Долги (Оранжевый) */}
                 <button className="bg-[#111111] rounded-[28px] p-5 flex flex-col items-center justify-center gap-4 border border-white/10 active:bg-[#1a1a1a] transition-all h-36 relative overflow-hidden group">
                     <div className="w-14 h-14 rounded-[20px] flex items-center justify-center bg-black border border-white/5 shadow-[0_0_20px_rgba(249,115,22,0.1)]">
                         <Banknote className="text-orange-500" size={28} strokeWidth={2} />
@@ -241,7 +324,6 @@ const MainApp = () => {
                 </button>
             </div>
 
-            {/* Аналитика (Фиолетовый) */}
             <button className="w-full bg-[#111111] rounded-[28px] p-5 flex flex-col items-center justify-center gap-4 border border-white/10 active:bg-[#1a1a1a] transition-all h-32 relative overflow-hidden group">
                 <div className="w-12 h-12 rounded-[18px] flex items-center justify-center bg-black border border-white/5 shadow-[0_0_20px_rgba(168,85,247,0.1)]">
                     <BarChart3 className="text-purple-500" size={24} strokeWidth={2.5} />
@@ -250,7 +332,7 @@ const MainApp = () => {
             </button>
         </div>
 
-        {/* === НЕДАВНЯЯ АКТИВНОСТЬ (НОВЫЙ БЛОК) === */}
+        {/* Недавняя активность */}
         <div className="pt-2">
             <div className="flex justify-between items-center mb-4 px-2">
                 <h3 className="text-xl font-bold text-white">Недавняя активность</h3>
@@ -292,7 +374,6 @@ const MainApp = () => {
     );
   };
 
-  // --- СПИСОК ТРАНЗАКЦИЙ ---
   const TransactionList = () => (
     <div className="p-4 pb-32 space-y-4 animate-fade-in bg-black min-h-screen pt-6">
       <div className="flex justify-between items-center mb-6 px-2">
@@ -347,72 +428,6 @@ const MainApp = () => {
     </div>
   );
 
-  const AddModal = () => (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-[#111111] w-full max-w-sm rounded-[32px] border border-white/10 p-6 space-y-6">
-              <div className="flex justify-between items-center">
-                  <h3 className="text-xl font-bold text-white">Добавить запись</h3>
-                  <button onClick={() => setIsAddModalOpen(false)}><X className="text-gray-500" /></button>
-              </div>
-              
-              <form onSubmit={handleAddTransaction} className="space-y-4">
-                  <div>
-                      <label className="text-gray-500 text-xs uppercase font-bold ml-1">Тип</label>
-                      <div className="flex bg-black rounded-xl p-1 mt-1 border border-white/5">
-                          <button type="button" onClick={() => setNewType('expense')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newType === 'expense' ? 'bg-white text-black' : 'text-gray-500'}`}>Расход</button>
-                          <button type="button" onClick={() => setNewType('income')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newType === 'income' ? 'bg-white text-black' : 'text-gray-500'}`}>Доход</button>
-                      </div>
-                  </div>
-
-                  <div>
-                      <label className="text-gray-500 text-xs uppercase font-bold ml-1">Сумма</label>
-                      <input 
-                          type="number" 
-                          value={newAmount}
-                          onChange={(e) => setNewAmount(e.target.value)}
-                          placeholder="0"
-                          className="w-full bg-black border border-white/5 rounded-xl p-4 text-white text-xl font-bold focus:border-green-500 outline-none transition-colors"
-                          required
-                      />
-                  </div>
-
-                  <div>
-                      <label className="text-gray-500 text-xs uppercase font-bold ml-1">Категория</label>
-                      <select 
-                          value={newCategory}
-                          onChange={(e) => setNewCategory(e.target.value)}
-                          className="w-full bg-black border border-white/5 rounded-xl p-4 text-white font-medium outline-none appearance-none"
-                      >
-                          <option>Продукты</option>
-                          <option>Еда вне дома</option>
-                          <option>Такси</option>
-                          <option>Транспорт</option>
-                          <option>Дом</option>
-                          <option>Зарплата</option>
-                          <option>Прочее</option>
-                      </select>
-                  </div>
-
-                  <div>
-                      <label className="text-gray-500 text-xs uppercase font-bold ml-1">Комментарий</label>
-                      <input 
-                          type="text" 
-                          value={newDescription}
-                          onChange={(e) => setNewDescription(e.target.value)}
-                          placeholder="Например: обед в офисе"
-                          className="w-full bg-black border border-white/5 rounded-xl p-4 text-white font-medium focus:border-green-500 outline-none transition-colors"
-                      />
-                  </div>
-
-                  <button type="submit" className="w-full bg-[#00E08F] hover:bg-[#00c980] text-black font-extrabold text-lg py-4 rounded-[20px] mt-4">
-                      Сохранить
-                  </button>
-              </form>
-          </div>
-      </div>
-  );
-
-  // --- ГЛАВНАЯ ОБЕРТКА ---
   return (
     <div className="min-h-screen font-sans overflow-x-hidden selection:bg-yellow-500/30"
          style={{ backgroundColor: '#000000', color: '#ffffff' }}>
@@ -421,9 +436,9 @@ const MainApp = () => {
         {activeTab === 'stats' && <StatsView />}
         {activeTab === 'list' && <TransactionList />}
         
-        {isAddModalOpen && <AddModal />}
+        {/* Кнопка Добавить работает, не ломая клавиатуру */}
+        <AddModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onAdd={handleAddTransaction} />
         
-        {/* Нижняя кнопка-экшен */}
         <div className="fixed bottom-0 left-0 w-full px-5 py-6 bg-gradient-to-t from-black via-black to-transparent z-20">
             <button 
                 onClick={() => setIsAddModalOpen(true)} 
