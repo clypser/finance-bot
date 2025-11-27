@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Wallet, PieChart as PieIcon, Plus, ArrowUpRight, ArrowDownLeft, Target, Crown, X, CreditCard, Banknote, BarChart3, ChevronRight, Trash2, Calendar, FileText } from 'lucide-react';
+import { Wallet, PieChart as PieIcon, Plus, ArrowUpRight, ArrowDownLeft, Target, Crown, X, CreditCard, Banknote, BarChart3, ChevronRight, Trash2, Calendar, FileText, Loader2 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 const API_URL = ''; 
 
+// === СТИЛИ ДЛЯ АНИМАЦИИ ===
 const shimmerStyle = `
   @keyframes shimmer {
     0% { background-position: 100% 0; }
@@ -16,6 +17,7 @@ const shimmerStyle = `
   }
 `;
 
+// === СПИСКИ КАТЕГОРИЙ (РУС) ===
 const EXPENSE_CATEGORIES = [
   'Продукты', 'Еда вне дома', 'Такси', 'Транспорт', 'Дом', 
   'ЖКУ', 'Связь', 'Здоровье', 'Красота', 'Спорт', 
@@ -29,6 +31,7 @@ const INCOME_CATEGORIES = [
   'Кэшбэк', 'Подарки', 'Возврат долга', 'Прочее'
 ];
 
+// === КОМПОНЕНТ ДЛЯ ОТЛОВА ОШИБОК ===
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -41,11 +44,12 @@ class ErrorBoundary extends React.Component {
     console.error("React Error:", error, errorInfo);
   }
   render() {
-    if (this.state.hasError) return <div className="p-4 text-red-500">Ошибка. Перезагрузите.</div>;
+    if (this.state.hasError) return <div className="p-4 text-red-500 text-center">Что-то пошло не так. Пожалуйста, перезагрузите.</div>;
     return this.props.children;
   }
 }
 
+// === ВЫНЕСЕННЫЙ КОМПОНЕНТ МОДАЛКИ ===
 const AddModal = ({ isOpen, onClose, onAdd }) => {
   const [newAmount, setNewAmount] = useState('');
   const [newType, setNewType] = useState('expense');
@@ -68,6 +72,7 @@ const AddModal = ({ isOpen, onClose, onAdd }) => {
 
   const handleSubmit = (e) => {
       e.preventDefault();
+      if (!newAmount) return;
       onAdd({ 
           amount: newAmount, 
           category: newCategory, 
@@ -82,41 +87,53 @@ const AddModal = ({ isOpen, onClose, onAdd }) => {
 
   return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-[#111111] w-full max-w-sm rounded-[32px] border border-white/10 p-6 space-y-6">
+          <div className="bg-[#111111] w-full max-w-sm rounded-[32px] border border-white/10 p-6 space-y-6 shadow-2xl">
               <div className="flex justify-between items-center">
-                  <h3 className="text-xl font-bold text-white">Добавить запись</h3>
-                  <button onClick={onClose}><X className="text-gray-500" /></button>
+                  <h3 className="text-xl font-bold text-white">Новая запись</h3>
+                  <button onClick={onClose} className="p-1 hover:bg-white/10 rounded-full transition-colors"><X className="text-gray-500" /></button>
               </div>
               
-              <form onSubmit={handleSubmit} className="space-y-4">
-                  <div>
-                      <label className="text-gray-500 text-xs uppercase font-bold ml-1">Тип</label>
-                      <div className="flex bg-black rounded-xl p-1 mt-1 border border-white/5">
-                          <button type="button" onClick={() => handleTypeChange('expense')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newType === 'expense' ? 'bg-white text-black' : 'text-gray-500'}`}>Расход</button>
-                          <button type="button" onClick={() => handleTypeChange('income')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newType === 'income' ? 'bg-white text-black' : 'text-gray-500'}`}>Доход</button>
-                      </div>
+              <form onSubmit={handleSubmit} className="space-y-5">
+                  {/* Переключатель Типа */}
+                  <div className="bg-black p-1 rounded-xl border border-white/10 flex">
+                      <button 
+                        type="button" 
+                        onClick={() => handleTypeChange('expense')} 
+                        className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all duration-200 ${newType === 'expense' ? 'bg-white text-black shadow-lg' : 'text-gray-500 hover:text-gray-300'}`}
+                      >
+                        Расход
+                      </button>
+                      <button 
+                        type="button" 
+                        onClick={() => handleTypeChange('income')} 
+                        className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all duration-200 ${newType === 'income' ? 'bg-white text-black shadow-lg' : 'text-gray-500 hover:text-gray-300'}`}
+                      >
+                        Доход
+                      </button>
                   </div>
 
+                  {/* Сумма */}
                   <div>
-                      <label className="text-gray-500 text-xs uppercase font-bold ml-1">Сумма</label>
+                      <label className="text-gray-500 text-[10px] uppercase font-bold tracking-wider ml-1 mb-1 block">Сумма</label>
                       <input 
                           type="number" 
                           value={newAmount}
                           onChange={(e) => setNewAmount(e.target.value)}
                           placeholder="0"
-                          className="w-full bg-black border border-white/5 rounded-xl p-4 text-white text-xl font-bold focus:border-green-500 outline-none transition-colors"
+                          className="w-full bg-black border border-white/10 rounded-xl p-4 text-white text-2xl font-bold focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none transition-all placeholder-gray-700"
                           required
                           autoFocus
                       />
                   </div>
 
+                  {/* Категория */}
                   <div>
-                      <label className="text-gray-500 text-xs uppercase font-bold ml-1">Категория</label>
+                      <label className="text-gray-500 text-[10px] uppercase font-bold tracking-wider ml-1 mb-1 block">Категория</label>
                       <div className="relative">
                           <select 
                               value={newCategory}
                               onChange={(e) => setNewCategory(e.target.value)}
-                              className="w-full bg-black border border-white/5 rounded-xl p-4 text-white font-medium outline-none appearance-none pr-10"
+                              className="w-full bg-black border border-white/10 rounded-xl p-4 text-white font-medium outline-none appearance-none pr-10 focus:border-green-500 transition-colors cursor-pointer"
                           >
                               {currentCategories.map(cat => (
                                   <option key={cat} value={cat}>{cat}</option>
@@ -128,18 +145,19 @@ const AddModal = ({ isOpen, onClose, onAdd }) => {
                       </div>
                   </div>
 
+                  {/* Комментарий */}
                   <div>
-                      <label className="text-gray-500 text-xs uppercase font-bold ml-1">Комментарий</label>
+                      <label className="text-gray-500 text-[10px] uppercase font-bold tracking-wider ml-1 mb-1 block">Комментарий (необязательно)</label>
                       <input 
                           type="text" 
                           value={newDescription}
                           onChange={(e) => setNewDescription(e.target.value)}
-                          placeholder={newType === 'expense' ? "Например: обед в офисе" : "Например: аванс за проект"}
-                          className="w-full bg-black border border-white/5 rounded-xl p-4 text-white font-medium focus:border-green-500 outline-none transition-colors"
+                          placeholder={newType === 'expense' ? "Например: такси до дома" : "Например: премия"}
+                          className="w-full bg-black border border-white/10 rounded-xl p-4 text-white font-medium focus:border-green-500 outline-none transition-colors placeholder-gray-700"
                       />
                   </div>
 
-                  <button type="submit" className="w-full bg-[#00E08F] hover:bg-[#00c980] text-black font-extrabold text-lg py-4 rounded-[20px] mt-4 shadow-[0_4px_14px_0_rgba(0,224,143,0.39)] transition-shadow">
+                  <button type="submit" className="w-full bg-[#00E08F] hover:bg-[#00c980] text-black font-extrabold text-lg py-4 rounded-[20px] mt-2 shadow-[0_0_20px_rgba(0,224,143,0.2)] active:scale-95 transition-all">
                       Сохранить
                   </button>
               </form>
@@ -161,7 +179,7 @@ const MainApp = () => {
   });
 
   const [loading, setLoading] = useState(false);
-  const [userName, setUserName] = useState('User');
+  const [userName, setUserName] = useState('Друг');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
   useEffect(() => {
@@ -200,23 +218,25 @@ const MainApp = () => {
       }
     } catch (err) {
       console.log("No data or offline");
-      setData({ transactions: [], chartData: [], total: 0 });
+      // Оставляем старые данные, если есть, или пустые
+      if (!data.transactions.length) setData({ transactions: [], chartData: [], total: 0 });
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async (id) => {
-      if(!confirm("Удалить эту запись?")) return;
+      // Используем нативный confirm, в Telegram WebApp он выглядит нормально
+      if(!window.confirm("Удалить эту запись навсегда?")) return;
       try {
           const userId = getTelegramUserId();
           await fetch(`${API_URL}/transaction/${id}`, {
               method: 'DELETE',
               headers: { 'x-telegram-id': userId }
           });
-          fetchStats();
+          fetchStats(); // Обновляем список сразу
       } catch (e) {
-          alert("Ошибка удаления");
+          alert("Не удалось удалить запись");
       }
   };
 
@@ -234,7 +254,7 @@ const MainApp = () => {
           setIsAddModalOpen(false);
           fetchStats();
       } catch (e) {
-          alert("Ошибка добавления");
+          alert("Ошибка добавления. Проверьте интернет.");
       }
   };
 
@@ -244,6 +264,16 @@ const MainApp = () => {
     }
   }, [activeTab, period]);
 
+  // --- ЭКРАН ЗАГРУЗКИ ---
+  if (loading && data.transactions.length === 0) {
+      return (
+          <div className="min-h-screen bg-black flex items-center justify-center">
+              <Loader2 className="text-[#00E08F] animate-spin" size={48} />
+          </div>
+      );
+  }
+
+  // --- ГЛАВНАЯ СТРАНИЦА ---
   const StatsView = () => {
     const displayBalance = data.transactions.reduce((acc, t) => acc + (t.type === 'income' ? t.amount : -t.amount), 0);
     const displayExpense = data.chartData.reduce((acc, c) => acc + c.value, 0);
@@ -253,33 +283,36 @@ const MainApp = () => {
       <div className="p-5 pb-36 space-y-6 animate-fade-in font-sans">
         <style>{shimmerStyle}</style>
         
+        {/* Хедер */}
         <div className="flex justify-between items-center pt-2 px-1">
-            <button className="text-gray-500 hover:text-white transition-colors p-1" onClick={() => window.Telegram?.WebApp?.close()}>
+            <button className="text-gray-500 hover:text-white transition-colors p-1 active:scale-90 transform" onClick={() => window.Telegram?.WebApp?.close()}>
                 <X size={24} />
             </button>
             <div className="text-center">
-                <h1 className="text-lg font-bold text-white tracking-wide">Loomy AI</h1>
+                <h1 className="text-lg font-bold text-white tracking-wide">Theo AI</h1>
             </div>
             <div className="w-8"></div>
         </div>
 
         <div className="text-center mt-4 mb-6">
             <h2 className="text-[32px] font-extrabold text-white mb-1 leading-tight">Привет, {userName}!</h2>
-            <p className="text-gray-500 text-sm font-medium">Ваш умный трекер расходов</p>
+            <p className="text-gray-500 text-sm font-medium">Твой умный трекер расходов</p>
         </div>
 
+        {/* Желтый переливающийся баннер */}
         <div className="relative overflow-hidden rounded-[32px] p-5 shadow-lg animate-shimmer cursor-pointer active:scale-95 transition-transform">
             <div className="relative z-10 flex items-center gap-4">
                 <div className="bg-white/25 p-2.5 rounded-2xl backdrop-blur-md border border-white/20">
                     <Crown className="text-black" size={26} strokeWidth={2.5} />
                 </div>
                 <div>
-                    <h3 className="font-extrabold text-black text-[15px] leading-tight">Loomy AI Pro — 7 дней бесплатно</h3>
+                    <h3 className="font-extrabold text-black text-[15px] leading-tight">Theo AI Pro — 7 дней бесплатно</h3>
                     <p className="text-black/70 text-[11px] font-bold mt-0.5 uppercase tracking-wide">Без карты • Авто-отмена</p>
                 </div>
             </div>
         </div>
 
+        {/* Карточка баланса */}
         <div className="bg-[#111111] rounded-[32px] p-8 text-center border border-white/10 shadow-2xl relative overflow-hidden">
             <p className="text-gray-500 text-[11px] font-bold mb-3 uppercase tracking-widest">Текущий баланс</p>
             <h2 className="text-[40px] font-black text-white tracking-tighter flex justify-center items-center gap-3">
@@ -293,8 +326,22 @@ const MainApp = () => {
             </h2>
         </div>
 
+        {/* Сводка за месяц */}
         <div className="bg-[#111111] rounded-[32px] p-6 border border-white/10">
-            <p className="text-center text-gray-500 text-[11px] font-bold mb-8 uppercase tracking-widest">Сводка за период</p>
+            <div className="flex justify-between items-center mb-6">
+                <p className="text-gray-500 text-[11px] font-bold uppercase tracking-widest">Статистика</p>
+                <div className="flex bg-black rounded-lg p-0.5 border border-white/5">
+                    {['week', 'month'].map(p => (
+                        <button 
+                            key={p}
+                            onClick={() => setPeriod(p)}
+                            className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all ${period === p ? 'bg-white text-black' : 'text-gray-500'}`}
+                        >
+                            {p === 'week' ? 'Неделя' : 'Месяц'}
+                        </button>
+                    ))}
+                </div>
+            </div>
             
             <div className="flex justify-between items-start mb-2 px-2 relative">
                 <div className="absolute left-1/2 top-0 bottom-0 w-[1px] bg-white/10 -translate-x-1/2"></div>
@@ -321,6 +368,7 @@ const MainApp = () => {
             </div>
         </div>
 
+        {/* Кнопки навигации */}
         <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
                 <button 
@@ -333,8 +381,7 @@ const MainApp = () => {
                     <span className="text-white font-bold text-sm tracking-wide">Транзакции</span>
                 </button>
 
-                <button className="bg-[#111111] rounded-[28px] p-5 flex flex-col items-center justify-center gap-4 border border-white/10 active:bg-[#1a1a1a] transition-all h-36 relative overflow-hidden group"
-                >
+                <button className="bg-[#111111] rounded-[28px] p-5 flex flex-col items-center justify-center gap-4 border border-white/10 active:bg-[#1a1a1a] transition-all h-36 relative overflow-hidden group">
                     <div className="w-14 h-14 rounded-[20px] flex items-center justify-center bg-black border border-white/5 shadow-[0_0_20px_rgba(249,115,22,0.1)]">
                         <Banknote className="text-orange-500" size={28} strokeWidth={2} />
                     </div>
@@ -350,18 +397,19 @@ const MainApp = () => {
             </button>
         </div>
 
+        {/* Недавняя активность */}
         <div className="pt-2">
             <div className="flex justify-between items-center mb-4 px-2">
                 <h3 className="text-xl font-bold text-white">Недавняя активность</h3>
-                <button onClick={() => setActiveTab('list')} className="text-green-500 text-xs font-bold uppercase tracking-wider flex items-center gap-1">
+                <button onClick={() => setActiveTab('list')} className="text-green-500 text-xs font-bold uppercase tracking-wider flex items-center gap-1 active:opacity-70">
                     Смотреть все <ChevronRight size={14} />
                 </button>
             </div>
 
             <div className="space-y-3">
                 {data.transactions.length === 0 ? (
-                    <div className="bg-[#111111] rounded-[24px] p-6 text-center border border-white/10">
-                        <p className="text-gray-500 text-sm">Пока нет операций</p>
+                    <div className="bg-[#111111] rounded-[24px] p-8 text-center border border-white/10">
+                        <p className="text-gray-500 text-sm font-medium">Пока нет операций</p>
                     </div>
                 ) : (
                     data.transactions.slice(0, 3).map((t) => (
@@ -395,7 +443,7 @@ const MainApp = () => {
     <div className="p-4 pb-32 space-y-4 animate-fade-in bg-black min-h-screen pt-6">
       <div className="flex justify-between items-center mb-6 px-2">
           <h2 className="text-2xl font-bold text-white">Вся история</h2>
-          <button onClick={() => setActiveTab('stats')} className="text-gray-500 p-2 bg-[#111111] rounded-full border border-white/10">
+          <button onClick={() => setActiveTab('stats')} className="text-gray-500 p-2 bg-[#111111] rounded-full border border-white/10 active:bg-white/10 transition-colors">
              <X size={20} />
           </button>
       </div>
@@ -409,7 +457,7 @@ const MainApp = () => {
         </div>
       ) : (
         data.transactions.map((t) => (
-          <div key={t.id} className="bg-[#111111] p-5 rounded-[24px] flex justify-between items-center border border-white/10 active:scale-[0.98] transition-transform">
+          <div key={t.id} className="bg-[#111111] p-5 rounded-[24px] flex justify-between items-center border border-white/10 active:scale-[0.98] transition-transform group">
             <div className="flex items-center gap-5">
               <div className={`p-3.5 rounded-2xl ${t.type === 'expense' ? 'bg-red-500/10 text-red-500' : 'bg-green-500/10 text-green-500'}`}>
                 {t.type === 'expense' ? <ArrowDownLeft size={22} strokeWidth={2.5} /> : <ArrowUpRight size={22} strokeWidth={2.5} />}
@@ -434,9 +482,9 @@ const MainApp = () => {
                 </span>
                 <button 
                     onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }}
-                    className="text-gray-600 hover:text-red-500 p-1 transition-colors"
+                    className="text-gray-600 hover:text-red-500 p-2 rounded-lg hover:bg-red-500/10 transition-colors"
                 >
-                    <Trash2 size={16} />
+                    <Trash2 size={18} />
                 </button>
             </div>
           </div>
@@ -453,8 +501,10 @@ const MainApp = () => {
         {activeTab === 'stats' && <StatsView />}
         {activeTab === 'list' && <TransactionList />}
         
+        {/* Кнопка Добавить работает, не ломая клавиатуру */}
         <AddModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onAdd={handleAddTransaction} />
         
+        {/* Нижняя панель с кнопкой */}
         <div className="fixed bottom-0 left-0 w-full px-5 py-6 bg-gradient-to-t from-black via-black to-transparent z-20">
             <button 
                 onClick={() => setIsAddModalOpen(true)} 

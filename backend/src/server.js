@@ -10,8 +10,8 @@ const app = express();
 const prisma = new PrismaClient();
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
-// === ЛОГ ЗАПУСКА (УНИКАЛЬНЫЙ МАРКЕР) ===
-console.log("🚀 FORCE UPDATE v555: Checking Currency Logic...");
+// === ЛОГ ЗАПУСКА ===
+console.log("🚀 Server restarting... Added Greetings & Text Handling v1");
 
 // === НАСТРОЙКИ ===
 const apiKey = process.env.OPENAI_API_KEY;
@@ -36,7 +36,10 @@ openai = new OpenAI(openaiConfig);
 app.use(cors());
 app.use(express.json());
 
-// === МЕНЮ ВАЛЮТ ===
+// === СПИСОК ПРИВЕТСТВИЙ ===
+const GREETINGS = ['привет', 'здравствуйте', 'ку', 'хай', 'hello', 'hi', 'салам', 'добрый день', 'добрый вечер', 'доброе утро'];
+
+// === КЛАВИАТУРА ВАЛЮТ ===
 const getCurrencyMenu = () => Markup.inlineKeyboard([
   [Markup.button.callback('🇺🇿 UZS', 'curr_UZS'), Markup.button.callback('🇺🇸 USD', 'curr_USD')],
   [Markup.button.callback('🇷🇺 RUB', 'curr_RUB'), Markup.button.callback('🇰🇿 KZT', 'curr_KZT')],
@@ -70,11 +73,17 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
   try {
     if (!apiKey) throw new Error("API Key missing");
 
+    // === ПРЕДОБРАБОТКА ТЕКСТА (ЖЕСТКАЯ ЗАМЕНА) ===
+    let cleanText = text;
+    cleanText = cleanText.replace(/(\d+)\s*[kк]/gi, (match, p1) => p1 + '000');
+    cleanText = cleanText.replace(/(\d+)\s*(m|м|млн)/gi, (match, p1) => p1 + '000000');
+
     const prompt = `
-      Analyze transaction: "${text}".
+      Analyze transaction: "${cleanText}".
       User Default Currency: ${userCurrency}.
       
       GOAL: Extract Amount, Type, Category, and Currency.
+      
       RULES:
       1. Extract Amount (number).
       2. Extract Currency (string, default to ${userCurrency}).
@@ -98,11 +107,12 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
     return JSON.parse(content);
   } catch (e) {
     console.error("AI Error:", e);
-    throw e;
+    return {};
   }
 };
 
-// --- BOT ---
+// --- BOT COMMANDS ---
+
 bot.start(async (ctx) => {
   const { id, first_name, username } = ctx.from;
   try {
@@ -112,62 +122,69 @@ bot.start(async (ctx) => {
       create: { telegramId: BigInt(id), firstName: first_name, username, currency: 'UZS' }
     });
     
-    await ctx.reply(`Привет! Твоя валюта: <b>${user.currency}</b>.`, {
+    await ctx.reply(`Привет, ${first_name}! 👋\nЯ твой финансовый помощник (GPT-4o).\n\nТвоя текущая валюта: <b>${user.currency}</b>.\nЕсли хочешь изменить её, нажми на кнопку ниже или введи команду /currency.`, {
         parse_mode: 'HTML',
         ...getCurrencyMenu()
     });
 
-    await ctx.reply('Открыть графики 👇', 
-      Markup.keyboard([[Markup.button.webApp('📊 Статистика', process.env.WEBAPP_URL)]]).resize()
+    await ctx.reply('Нажми кнопку ниже, чтобы открыть графики 👇', 
+      Markup.keyboard([[Markup.button.webApp('📊 Моя статистика', process.env.WEBAPP_URL)]]).resize()
     );
   } catch (e) { console.error(e); }
 });
 
 bot.command('currency', async (ctx) => {
-    await ctx.reply('Выберите валюту:', getCurrencyMenu());
+    await ctx.reply('Выберите основную валюту для учета:', getCurrencyMenu());
 });
 
-// === ОБРАБОТЧИК СМЕНЫ ВАЛЮТЫ ===
 bot.action(/^curr_(.+)$/, async (ctx) => {
     const newCurrency = ctx.match[1];
     const userId = ctx.from.id;
     
-    console.log(`🔄 [LOG v555] User ${userId} changing currency to ${newCurrency}`);
-    
     try {
-        const updatedUser = await prisma.user.update({
+        await prisma.user.update({
             where: { telegramId: BigInt(userId) },
             data: { currency: newCurrency }
         });
         
-        console.log(`✅ [LOG v555] DB Update Success: ${updatedUser.currency}`);
-        
-        await ctx.answerCbQuery(`OK: ${newCurrency}`);
-        await ctx.editMessageText(`✅ Валюта обновлена: <b>${newCurrency}</b>`, { parse_mode: 'HTML' });
+        await ctx.answerCbQuery(`Валюта изменена на ${newCurrency}`);
+        await ctx.editMessageText(`✅ Готово! Твоя основная валюта теперь: <b>${newCurrency}</b>.\n\nТеперь все суммы без указания значка (например "обед 500") я буду считать в ${newCurrency}.`, { parse_mode: 'HTML' });
     } catch (e) {
-        console.error("❌ [LOG v555] Update failed:", e);
-        await ctx.answerCbQuery("Ошибка.");
+        console.error("Update currency error:", e);
+        await ctx.answerCbQuery("Ошибка обновления.");
     }
 });
 
+// Обработчик текста
 bot.on('text', async (ctx) => {
   try {
     const userId = BigInt(ctx.from.id);
     const user = await prisma.user.findUnique({ where: { telegramId: userId } });
     if (!user) return ctx.reply('Нажми /start');
     
-    const currentCurrency = user.currency || 'UZS';
-    
-    // ЛОГ ДЛЯ ПРОВЕРКИ
-    console.log(`📝 [LOG v555] Processing text in currency: ${currentCurrency}`);
+    const text = ctx.message.text.toLowerCase().trim();
 
-    const result = await analyzeText(ctx.message.text, currentCurrency);
-    
-    if (!result || !result.amount) {
-        return ctx.reply('⚠️ Не вижу сумму.');
+    // === ОБРАБОТКА ПРИВЕТСТВИЙ ===
+    // Если текст есть в списке приветствий - просто здороваемся
+    if (GREETINGS.includes(text.replace(/[!.]/g, ''))) {
+        return ctx.reply(`Привет! 👋 Я готов записывать расходы. Просто напиши сумму и категорию, например:\n\n🚕 Такси 30к\n🍔 Обед 50000`);
     }
 
-    const finalCurrency = result.currency || currentCurrency;
+    // Пропускаем через фильтр: если в тексте ВООБЩЕ нет цифр, не мучаем AI
+    // (но пропускаем слова типа "тысяча", "миллион", если вдруг пользователь так пишет)
+    if (!/\d/.test(ctx.message.text) && !/(тысяч|миллион|к|k|m|м)/i.test(ctx.message.text)) {
+         return ctx.reply('⚠️ Я не вижу сумму в сообщении.\nПожалуйста, напишите число, например: "Обед 50000".');
+    }
+    
+    ctx.sendChatAction('typing');
+
+    const result = await analyzeText(ctx.message.text, user.currency);
+    
+    if (!result || !result.amount) {
+        return ctx.reply('⚠️ Я не нашел сумму в вашем сообщении.\nПожалуйста, напишите трату с цифрами, например:\n— "Такси 20000"\n— "Обед 50к"');
+    }
+
+    const finalCurrency = result.currency || user.currency || 'UZS';
 
     await prisma.transaction.create({
       data: {
@@ -182,9 +199,12 @@ bot.on('text', async (ctx) => {
 
     const emoji = getCategoryEmoji(result.category);
     const sign = result.type === 'expense' ? '-' : '+';
+    
     ctx.reply(`✅ ${sign}${result.amount.toLocaleString()} ${finalCurrency} | ${emoji} ${result.category}`);
+
   } catch (e) {
-    ctx.reply(`❌ Ошибка: ${e.message}`);
+    console.error("Bot Error:", e);
+    ctx.reply(`❌ Произошла ошибка. Попробуйте еще раз.`);
   }
 });
 
@@ -208,8 +228,6 @@ app.get('/stats/:period', async (req, res) => {
   try {
     const userId = await getUserId(req);
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-
-    const user = await prisma.user.findUnique({ where: { id: userId } });
     const { period } = req.params;
     const now = new Date();
     let dateFilter = {};
@@ -218,31 +236,40 @@ app.get('/stats/:period', async (req, res) => {
     if (period === 'month') dateFilter = { gte: startOfMonth(now), lte: endOfMonth(now) };
 
     const transactions = await prisma.transaction.findMany({ where: { userId, date: dateFilter }, orderBy: { date: 'desc' } });
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+
     const stats = transactions.reduce((acc, curr) => {
       if (curr.type === 'expense') acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
       return acc;
     }, {});
     const chartData = Object.keys(stats).map(key => ({ name: key, value: stats[key] }));
-    
     res.json({ transactions, chartData, total: transactions.length, currency: user?.currency || 'UZS' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// НОВЫЙ МАРШРУТ: Удаление транзакции
 app.delete('/transaction/:id', async (req, res) => {
   try {
     const userId = await getUserId(req);
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    
     const { id } = req.params;
+    const transaction = await prisma.transaction.findFirst({ where: { id: parseInt(id), userId } });
+
+    if (!transaction) return res.status(404).json({ error: 'Not found' });
+
     await prisma.transaction.delete({ where: { id: parseInt(id) } });
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// НОВЫЙ МАРШРУТ: Ручное добавление транзакции
 app.post('/transaction/add', async (req, res) => {
   try {
     const userId = await getUserId(req);
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-    const { amount, category, type, description } = req.body;
+    
+    const { amount, category, type, description, date } = req.body;
     const user = await prisma.user.findUnique({ where: { id: userId } });
     
     const newTransaction = await prisma.transaction.create({
@@ -252,9 +279,11 @@ app.post('/transaction/add', async (req, res) => {
             type,
             description,
             currency: user.currency || 'UZS',
+            date: date ? new Date(date) : new Date(),
             userId
         }
     });
+
     res.json(newTransaction);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
