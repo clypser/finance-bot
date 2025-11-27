@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Wallet, PieChart as PieIcon, Plus, ArrowUpRight, ArrowDownLeft, Target, Crown, X, CreditCard, Banknote, BarChart3, ChevronRight, Trash2, Calendar, FileText, Zap } from 'lucide-react';
+import { Wallet, PieChart as PieIcon, Plus, ArrowUpRight, ArrowDownLeft, Target, Crown, X, CreditCard, Banknote, BarChart3, ChevronRight, Trash2, Loader2, Zap } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 const API_URL = ''; 
 
-// === СТИЛИ ДЛЯ АНИМАЦИИ ===
 const shimmerStyle = `
   @keyframes shimmer {
     0% { background-position: 100% 0; }
@@ -17,39 +16,16 @@ const shimmerStyle = `
   }
 `;
 
-// === СПИСКИ КАТЕГОРИЙ ===
-const EXPENSE_CATEGORIES = [
-  'Продукты', 'Еда вне дома', 'Такси', 'Транспорт', 'Дом', 
-  'ЖКУ', 'Связь', 'Здоровье', 'Красота', 'Спорт', 
-  'Одежда', 'Техника', 'Развлечения', 'Подписки', 
-  'Образование', 'Подарки', 'Кредиты', 'Прочее'
-];
+const EXPENSE_CATEGORIES = ['Продукты', 'Еда вне дома', 'Такси', 'Транспорт', 'Дом', 'ЖКУ', 'Связь', 'Здоровье', 'Красота', 'Спорт', 'Одежда', 'Техника', 'Развлечения', 'Подписки', 'Образование', 'Подарки', 'Кредиты', 'Прочее'];
+const INCOME_CATEGORIES = ['Зарплата', 'Аванс', 'Премия', 'Стипендия', 'Фриланс', 'Бизнес', 'Дивиденды', 'Вклады', 'Кэшбэк', 'Подарки', 'Возврат долга', 'Прочее'];
 
-const INCOME_CATEGORIES = [
-  'Зарплата', 'Аванс', 'Премия', 'Стипендия', 
-  'Фриланс', 'Бизнес', 'Дивиденды', 'Вклады', 
-  'Кэшбэк', 'Подарки', 'Возврат долга', 'Прочее'
-];
-
-// === КОМПОНЕНТ ДЛЯ ОТЛОВА ОШИБОК ===
 class ErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false };
-  }
-  static getDerivedStateFromError(error) {
-    return { hasError: true };
-  }
-  componentDidCatch(error, errorInfo) {
-    console.error("React Error:", error, errorInfo);
-  }
-  render() {
-    if (this.state.hasError) return <div className="p-4 text-red-500 text-center">Что-то пошло не так. Пожалуйста, перезагрузите.</div>;
-    return this.props.children;
-  }
+  constructor(props) { super(props); this.state = { hasError: false }; }
+  static getDerivedStateFromError(error) { return { hasError: true }; }
+  componentDidCatch(error, errorInfo) { console.error(error); }
+  render() { if (this.state.hasError) return <div className="p-4 text-red-500 text-center">Ошибка.</div>; return this.props.children; }
 }
 
-// === ВЫНЕСЕННЫЙ КОМПОНЕНТ МОДАЛКИ ===
 const AddModal = ({ isOpen, onClose, onAdd }) => {
   const [newAmount, setNewAmount] = useState('');
   const [newType, setNewType] = useState('expense');
@@ -57,109 +33,34 @@ const AddModal = ({ isOpen, onClose, onAdd }) => {
   const [newDescription, setNewDescription] = useState('');
 
   useEffect(() => {
-      if (isOpen) {
-          setNewAmount('');
-          setNewDescription('');
-          setNewType('expense');
-          setNewCategory(EXPENSE_CATEGORIES[0]);
-      }
+      if (isOpen) { setNewAmount(''); setNewDescription(''); setNewType('expense'); setNewCategory(EXPENSE_CATEGORIES[0]); }
   }, [isOpen]);
 
-  const handleTypeChange = (type) => {
-      setNewType(type);
-      setNewCategory(type === 'expense' ? EXPENSE_CATEGORIES[0] : INCOME_CATEGORIES[0]);
-  };
-
-  const handleSubmit = (e) => {
-      e.preventDefault();
-      if (!newAmount) return;
-      onAdd({ 
-          amount: newAmount, 
-          category: newCategory, 
-          type: newType, 
-          description: newDescription 
-      });
-  };
+  const handleTypeChange = (type) => { setNewType(type); setNewCategory(type === 'expense' ? EXPENSE_CATEGORIES[0] : INCOME_CATEGORIES[0]); };
+  const handleSubmit = (e) => { e.preventDefault(); onAdd({ amount: newAmount, category: newCategory, type: newType, description: newDescription }); };
 
   if (!isOpen) return null;
-
-  const currentCategories = newType === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
-
   return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
           <div className="bg-[#111111] w-full max-w-sm rounded-[32px] border border-white/10 p-6 space-y-6 shadow-2xl">
               <div className="flex justify-between items-center">
                   <h3 className="text-xl font-bold text-white">Новая запись</h3>
-                  <button onClick={onClose} className="p-1 hover:bg-white/10 rounded-full transition-colors"><X className="text-gray-500" /></button>
+                  <button onClick={onClose}><X className="text-gray-500" /></button>
               </div>
-              
               <form onSubmit={handleSubmit} className="space-y-5">
-                  {/* Переключатель Типа */}
                   <div className="bg-black p-1 rounded-xl border border-white/10 flex">
-                      <button 
-                        type="button" 
-                        onClick={() => handleTypeChange('expense')} 
-                        className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all duration-200 ${newType === 'expense' ? 'bg-white text-black shadow-lg' : 'text-gray-500 hover:text-gray-300'}`}
-                      >
-                        Расход
-                      </button>
-                      <button 
-                        type="button" 
-                        onClick={() => handleTypeChange('income')} 
-                        className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all duration-200 ${newType === 'income' ? 'bg-white text-black shadow-lg' : 'text-gray-500 hover:text-gray-300'}`}
-                      >
-                        Доход
-                      </button>
+                      <button type="button" onClick={() => handleTypeChange('expense')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${newType === 'expense' ? 'bg-white text-black' : 'text-gray-500'}`}>Расход</button>
+                      <button type="button" onClick={() => handleTypeChange('income')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${newType === 'income' ? 'bg-white text-black' : 'text-gray-500'}`}>Доход</button>
                   </div>
-
-                  {/* Сумма */}
-                  <div>
-                      <label className="text-gray-500 text-[10px] uppercase font-bold tracking-wider ml-1 mb-1 block">Сумма</label>
-                      <input 
-                          type="number" 
-                          value={newAmount}
-                          onChange={(e) => setNewAmount(e.target.value)}
-                          placeholder="0"
-                          className="w-full bg-black border border-white/10 rounded-xl p-4 text-white text-2xl font-bold focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none transition-all placeholder-gray-700"
-                          required
-                          autoFocus
-                      />
+                  <input type="number" value={newAmount} onChange={(e) => setNewAmount(e.target.value)} placeholder="0" className="w-full bg-black border border-white/10 rounded-xl p-4 text-white text-2xl font-bold outline-none" required autoFocus />
+                  <div className="relative">
+                      <select value={newCategory} onChange={(e) => setNewCategory(e.target.value)} className="w-full bg-black border border-white/10 rounded-xl p-4 text-white font-medium outline-none appearance-none pr-10">
+                          {(newType === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES).map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                      </select>
+                      <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 rotate-90 text-gray-500" size={20} />
                   </div>
-
-                  {/* Категория */}
-                  <div>
-                      <label className="text-gray-500 text-[10px] uppercase font-bold tracking-wider ml-1 mb-1 block">Категория</label>
-                      <div className="relative">
-                          <select 
-                              value={newCategory}
-                              onChange={(e) => setNewCategory(e.target.value)}
-                              className="w-full bg-black border border-white/10 rounded-xl p-4 text-white font-medium outline-none appearance-none pr-10 focus:border-green-500 transition-colors cursor-pointer"
-                          >
-                              {currentCategories.map(cat => (
-                                  <option key={cat} value={cat}>{cat}</option>
-                              ))}
-                          </select>
-                          <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
-                              <ChevronRight className="rotate-90" size={20} />
-                          </div>
-                      </div>
-                  </div>
-
-                  {/* Комментарий */}
-                  <div>
-                      <label className="text-gray-500 text-[10px] uppercase font-bold tracking-wider ml-1 mb-1 block">Комментарий (необязательно)</label>
-                      <input 
-                          type="text" 
-                          value={newDescription}
-                          onChange={(e) => setNewDescription(e.target.value)}
-                          placeholder={newType === 'expense' ? "Например: такси до дома" : "Например: премия"}
-                          className="w-full bg-black border border-white/10 rounded-xl p-4 text-white font-medium focus:border-green-500 outline-none transition-colors placeholder-gray-700"
-                      />
-                  </div>
-
-                  <button type="submit" className="w-full bg-[#00E08F] hover:bg-[#00c980] text-black font-extrabold text-lg py-4 rounded-[20px] mt-2 shadow-[0_0_20px_rgba(0,224,143,0.2)] active:scale-95 transition-all">
-                      Сохранить
-                  </button>
+                  <input type="text" value={newDescription} onChange={(e) => setNewDescription(e.target.value)} placeholder="Комментарий..." className="w-full bg-black border border-white/10 rounded-xl p-4 text-white font-medium outline-none" />
+                  <button type="submit" className="w-full bg-[#00E08F] hover:bg-[#00c980] text-black font-extrabold text-lg py-4 rounded-[20px] mt-2 shadow-[0_0_20px_rgba(0,224,143,0.2)]">Сохранить</button>
               </form>
           </div>
       </div>
@@ -170,84 +71,71 @@ const MainApp = () => {
   const [activeTab, setActiveTab] = useState('stats');
   const [period, setPeriod] = useState('month');
   const [data, setData] = useState({ transactions: [], chartData: [], total: 0 });
-  
-  // Валюта из localStorage
-  const [currency, setCurrency] = useState(() => {
-      if (typeof window !== 'undefined' && window.localStorage) {
-          return localStorage.getItem('userCurrency') || 'UZS';
-      }
-      return 'UZS';
-  });
-
+  const [currency, setCurrency] = useState('UZS');
   const [loading, setLoading] = useState(false);
-  const [userName, setUserName] = useState('Друг');
+  const [userName, setUserName] = useState('User');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   
-  // Данные о подписке
   const [isPro, setIsPro] = useState(false);
-  const [limitRemaining, setLimitRemaining] = useState(null);
+  const [limitRemaining, setLimitRemaining] = useState(50); // Дефолт 50
 
   useEffect(() => {
     const tg = window.Telegram?.WebApp;
     if (tg) {
       tg.ready();
       tg.expand();
-      if (tg.initDataUnsafe?.user?.first_name) {
-        setUserName(tg.initDataUnsafe.user.first_name);
-      }
+      if (tg.initDataUnsafe?.user?.first_name) setUserName(tg.initDataUnsafe.user.first_name);
       tg.setHeaderColor('#000000');
       tg.setBackgroundColor('#000000');
     }
   }, []);
 
-  const getTelegramUserId = () => {
-    return window.Telegram?.WebApp?.initDataUnsafe?.user?.id?.toString() || '123456789';
-  };
+  const getTelegramUserId = () => window.Telegram?.WebApp?.initDataUnsafe?.user?.id?.toString() || '123456789';
 
   const fetchStats = async () => {
     setLoading(true);
     try {
       const userId = getTelegramUserId();
-      const response = await fetch(`${API_URL}/stats/${period}`, {
-        headers: { 'x-telegram-id': userId }
-      });
-      
+      const response = await fetch(`${API_URL}/stats/${period}`, { headers: { 'x-telegram-id': userId } });
       if (!response.ok) throw new Error('API Error');
-      
       const result = await response.json();
       setData(result);
-      
       if (result.currency) {
           setCurrency(result.currency);
           localStorage.setItem('userCurrency', result.currency);
       }
-      
-      // Обновляем статус подписки
       setIsPro(result.isPro);
-      setLimitRemaining(result.limitRemaining);
-
+      // Если remaining пришло с сервера - используем, иначе 0
+      setLimitRemaining(result.limitRemaining !== undefined ? result.limitRemaining : 0);
     } catch (err) {
-      console.log("No data or offline");
-      // Оставляем старые данные, если есть, или пустые
-      if (!data.transactions.length) setData({ transactions: [], chartData: [], total: 0 });
+      console.log("Offline");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async (id) => {
-      // Используем нативный confirm, в Telegram WebApp он выглядит нормально
-      if(!window.confirm("Удалить эту запись навсегда?")) return;
+  const handleBuyPro = async () => {
       try {
           const userId = getTelegramUserId();
-          await fetch(`${API_URL}/transaction/${id}`, {
-              method: 'DELETE',
+          // Отправляем запрос на создание счета
+          await fetch(`${API_URL}/payment/invoice`, {
+              method: 'POST',
               headers: { 'x-telegram-id': userId }
           });
-          fetchStats(); // Обновляем список сразу
+          // Закрываем апп, чтобы юзер увидел счет в чате
+          window.Telegram?.WebApp?.close();
       } catch (e) {
-          alert("Не удалось удалить запись");
+          alert("Ошибка. Попробуйте написать /pro в боте");
       }
+  };
+
+  const handleDelete = async (id) => {
+      if(!window.confirm("Удалить?")) return;
+      try {
+          const userId = getTelegramUserId();
+          await fetch(`${API_URL}/transaction/${id}`, { method: 'DELETE', headers: { 'x-telegram-id': userId } });
+          fetchStats();
+      } catch (e) { alert("Ошибка"); }
   };
 
   const handleAddTransaction = async (formData) => {
@@ -255,32 +143,17 @@ const MainApp = () => {
           const userId = getTelegramUserId();
           const response = await fetch(`${API_URL}/transaction/add`, {
               method: 'POST',
-              headers: { 
-                  'x-telegram-id': userId,
-                  'Content-Type': 'application/json'
-              },
+              headers: { 'x-telegram-id': userId, 'Content-Type': 'application/json' },
               body: JSON.stringify(formData)
           });
-          
-          if (response.status === 403) {
-              alert("Лимит записей превышен! Купите Pro версию в боте.");
-              return;
-          }
-          
+          if (response.status === 403) { alert("Лимит превышен! Купите Pro."); return; }
           setIsAddModalOpen(false);
           fetchStats();
-      } catch (e) {
-          alert("Ошибка добавления. Проверьте интернет.");
-      }
+      } catch (e) { alert("Ошибка"); }
   };
 
-  useEffect(() => {
-    if (activeTab === 'stats' || activeTab === 'list') {
-      fetchStats();
-    }
-  }, [activeTab, period]);
+  useEffect(() => { if (activeTab === 'stats' || activeTab === 'list') fetchStats(); }, [activeTab, period]);
 
-  // --- ГЛАВНАЯ СТРАНИЦА ---
   const StatsView = () => {
     const displayBalance = data.transactions.reduce((acc, t) => acc + (t.type === 'income' ? t.amount : -t.amount), 0);
     const displayExpense = data.chartData.reduce((acc, c) => acc + c.value, 0);
@@ -289,124 +162,70 @@ const MainApp = () => {
     return (
       <div className="p-5 pb-36 space-y-6 animate-fade-in font-sans">
         <style>{shimmerStyle}</style>
-        
-        {/* Хедер */}
         <div className="flex justify-between items-center pt-2 px-1">
-            <button className="text-gray-500 hover:text-white transition-colors p-1 active:scale-90 transform" onClick={() => window.Telegram?.WebApp?.close()}>
-                <X size={24} />
-            </button>
-            <div className="text-center">
-                <h1 className="text-lg font-bold text-white tracking-wide">Theo AI</h1>
-            </div>
+            <button className="text-gray-500 hover:text-white p-1" onClick={() => window.Telegram?.WebApp?.close()}><X size={24} /></button>
+            <h1 className="text-lg font-bold text-white">Loomy AI</h1>
             <div className="w-8"></div>
         </div>
-
         <div className="text-center mt-4 mb-6">
-            <h2 className="text-[32px] font-extrabold text-white mb-1 leading-tight">Привет, {userName}!</h2>
-            <p className="text-gray-500 text-sm font-medium">Ваш умный трекер расходов</p>
+            <h2 className="text-[32px] font-extrabold text-white mb-1">Привет, {userName}!</h2>
+            <p className="text-gray-500 text-sm font-medium">Твой умный трекер</p>
         </div>
 
-        {/* Баннер PRO */}
+        {/* Баннер PRO - ТЕПЕРЬ РАБОТАЕТ И ПОКАЗЫВАЕТ ОСТАТОК */}
         {!isPro ? (
             <div className="relative overflow-hidden rounded-[32px] p-5 shadow-lg animate-shimmer cursor-pointer active:scale-95 transition-transform"
-                 onClick={() => window.Telegram?.WebApp?.close()}> {/* Закрыть апп, чтобы юзер купил в боте */}
+                 onClick={handleBuyPro}>
                 <div className="relative z-10 flex items-center gap-4">
                     <div className="bg-white/25 p-2.5 rounded-2xl backdrop-blur-md border border-white/20">
                         <Crown className="text-black" size={26} strokeWidth={2.5} />
                     </div>
                     <div>
-                        <h3 className="font-extrabold text-black text-[15px] leading-tight">Купить Theo AI Pro</h3>
+                        <h3 className="font-extrabold text-black text-[15px]">Купить Theo AI Pro</h3>
                         <p className="text-black/70 text-[11px] font-bold mt-0.5 uppercase tracking-wide">
-                           Осталось записей: {limitRemaining !== null ? limitRemaining : '...'}
+                           Осталось записей: {limitRemaining}
                         </p>
                     </div>
                 </div>
             </div>
         ) : (
              <div className="bg-[#111111] rounded-[32px] p-5 border border-white/10 flex items-center gap-4">
-                 <div className="bg-green-500/10 p-2.5 rounded-2xl">
-                     <Zap className="text-green-500" size={26} strokeWidth={2.5} />
-                 </div>
-                 <div>
-                    <h3 className="font-bold text-white text-sm">Pro Активен</h3>
-                    <p className="text-gray-500 text-xs">Безлимитный доступ</p>
-                 </div>
+                 <div className="bg-green-500/10 p-2.5 rounded-2xl"><Zap className="text-green-500" size={26} /></div>
+                 <div><h3 className="font-bold text-white text-sm">Pro Активен</h3><p className="text-gray-500 text-xs">Безлимит</p></div>
              </div>
         )}
 
-        {/* Карточка баланса */}
         <div className="bg-[#111111] rounded-[32px] p-8 text-center border border-white/10 shadow-2xl relative overflow-hidden">
             <p className="text-gray-500 text-[11px] font-bold mb-3 uppercase tracking-widest">Текущий баланс</p>
-            <h2 className="text-[40px] font-black text-white tracking-tighter flex justify-center items-center gap-3">
-                {currency} {displayBalance.toLocaleString()}
-            </h2>
+            <h2 className="text-[40px] font-black text-white tracking-tighter">{currency} {displayBalance.toLocaleString()}</h2>
         </div>
 
-        {/* Сводка */}
         <div className="bg-[#111111] rounded-[32px] p-6 border border-white/10">
             <div className="flex justify-between items-start mb-2 px-2 relative">
                 <div className="absolute left-1/2 top-0 bottom-0 w-[1px] bg-white/10 -translate-x-1/2"></div>
                 <div className="text-center w-1/2 pr-4">
                     <p className="text-xl font-bold text-white mb-1.5 tracking-tight">-{displayExpense.toLocaleString()}</p>
-                    <div className="flex items-center justify-center gap-1.5 text-red-500 text-[10px] font-black uppercase tracking-wider bg-red-500/10 py-1 px-2 rounded-lg mx-auto w-max">
-                        <ArrowDownLeft size={12} strokeWidth={3} /> Расходы
-                    </div>
+                    <div className="flex items-center justify-center gap-1.5 text-red-500 text-[10px] font-black uppercase tracking-wider bg-red-500/10 py-1 px-2 rounded-lg mx-auto w-max"><ArrowDownLeft size={12} strokeWidth={3} /> Расходы</div>
                 </div>
                 <div className="text-center w-1/2 pl-4">
                     <p className="text-xl font-bold text-white mb-1.5 tracking-tight">+{displayIncome.toLocaleString()}</p>
-                    <div className="flex items-center justify-center gap-1.5 text-green-500 text-[10px] font-black uppercase tracking-wider bg-green-500/10 py-1 px-2 rounded-lg mx-auto w-max">
-                        <ArrowUpRight size={12} strokeWidth={3} /> Доходы
-                    </div>
+                    <div className="flex items-center justify-center gap-1.5 text-green-500 text-[10px] font-black uppercase tracking-wider bg-green-500/10 py-1 px-2 rounded-lg mx-auto w-max"><ArrowUpRight size={12} strokeWidth={3} /> Доходы</div>
                 </div>
             </div>
-        </div>
-
-        {/* Кнопки */}
-        <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-                <button onClick={() => setActiveTab('list')} className="bg-[#111111] rounded-[28px] p-5 flex flex-col items-center justify-center gap-4 border border-white/10 active:bg-[#1a1a1a] transition-all h-36">
-                    <div className="w-14 h-14 rounded-[20px] flex items-center justify-center bg-black border border-white/5 shadow-[0_0_20px_rgba(34,197,94,0.1)]">
-                        <Wallet className="text-green-500" size={28} strokeWidth={2} />
-                    </div>
-                    <span className="text-white font-bold text-sm tracking-wide">Транзакции</span>
-                </button>
-                <button className="bg-[#111111] rounded-[28px] p-5 flex flex-col items-center justify-center gap-4 border border-white/10 active:bg-[#1a1a1a] transition-all h-36">
-                    <div className="w-14 h-14 rounded-[20px] flex items-center justify-center bg-black border border-white/5 shadow-[0_0_20px_rgba(249,115,22,0.1)]">
-                        <Banknote className="text-orange-500" size={28} strokeWidth={2} />
-                    </div>
-                    <span className="text-white font-bold text-sm tracking-wide">Долги</span>
-                </button>
-            </div>
-
-            <button className="w-full bg-[#111111] rounded-[28px] p-5 flex flex-col items-center justify-center gap-4 border border-white/10 active:bg-[#1a1a1a] transition-all h-32 relative overflow-hidden group">
-                <div className="w-12 h-12 rounded-[18px] flex items-center justify-center bg-black border border-white/5 shadow-[0_0_20px_rgba(168,85,247,0.1)]">
-                    <BarChart3 className="text-purple-500" size={24} strokeWidth={2.5} />
-                </div>
-                <span className="text-white font-bold text-sm tracking-wide">Аналитика</span>
-            </button>
         </div>
         
-        <div className="pt-2">
-             <h3 className="text-xl font-bold text-white mb-4 px-2">Недавняя активность</h3>
-             <div className="space-y-3">
-                {data.transactions.slice(0, 3).map((t) => (
-                    <div key={t.id} className="bg-[#111111] p-4 rounded-[24px] flex justify-between items-center border border-white/10">
-                        <div className="flex items-center gap-4">
-                             <div className={`p-3 rounded-2xl ${t.type === 'expense' ? 'bg-red-500/10 text-red-500' : 'bg-green-500/10 text-green-500'}`}>
-                                {t.type === 'expense' ? <ArrowDownLeft size={20} /> : <ArrowUpRight size={20} />}
-                             </div>
-                             <div>
-                                <p className="font-bold text-white text-sm">{t.category}</p>
-                                <p className="text-[10px] text-gray-500 mt-0.5 font-medium uppercase">{t.description}</p>
-                             </div>
-                        </div>
-                        <span className={`font-black text-[15px] ${t.type === 'expense' ? 'text-white' : 'text-green-500'}`}>
-                            {t.type === 'expense' ? '-' : '+'}{t.amount.toLocaleString()}
-                        </span>
-                    </div>
-                ))}
-             </div>
+        {/* Кнопки навигации */}
+        <div className="grid grid-cols-2 gap-4">
+            <button onClick={() => setActiveTab('list')} className="bg-[#111111] rounded-[28px] p-5 flex flex-col items-center justify-center gap-4 border border-white/10 active:bg-[#1a1a1a] transition-all h-36">
+                <div className="w-14 h-14 rounded-[20px] flex items-center justify-center bg-black border border-white/5 shadow-[0_0_20px_rgba(34,197,94,0.1)]"><Wallet className="text-green-500" size={28} strokeWidth={2} /></div>
+                <span className="text-white font-bold text-sm">Транзакции</span>
+            </button>
+            <button className="bg-[#111111] rounded-[28px] p-5 flex flex-col items-center justify-center gap-4 border border-white/10 active:bg-[#1a1a1a] transition-all h-36">
+                <div className="w-14 h-14 rounded-[20px] flex items-center justify-center bg-black border border-white/5 shadow-[0_0_20px_rgba(249,115,22,0.1)]"><Banknote className="text-orange-500" size={28} strokeWidth={2} /></div>
+                <span className="text-white font-bold text-sm">Долги</span>
+            </button>
         </div>
+        <button className="w-full bg-[#111111] rounded-[28px] p-5 flex flex-col items-center justify-center gap-4 border border-white/10 active:bg-[#1a1a1a] transition-all h-32"><div className="w-12 h-12 rounded-[18px] flex items-center justify-center bg-black border border-white/5 shadow-[0_0_20px_rgba(168,85,247,0.1)]"><BarChart3 className="text-purple-500" size={24} strokeWidth={2.5} /></div><span className="text-white font-bold text-sm">Аналитика</span></button>
       </div>
     );
   };
@@ -455,10 +274,5 @@ const MainApp = () => {
   );
 }
 
-const App = () => (
-  <ErrorBoundary>
-    <MainApp />
-  </ErrorBoundary>
-);
-
+const App = () => <ErrorBoundary><MainApp /></ErrorBoundary>;
 export default App;
