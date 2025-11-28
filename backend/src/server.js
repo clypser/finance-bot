@@ -11,7 +11,7 @@ const prisma = new PrismaClient();
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
 // === ЛОГ ЗАПУСКА ===
-console.log("🚀 Server restarting... Rich Answers + Subscription Fix");
+console.log("🚀 Server restarting... RESTORING RICH FEATURES (Emojis + Currency Menu)");
 
 // === НАСТРОЙКИ ===
 const apiKey = process.env.OPENAI_API_KEY;
@@ -36,7 +36,10 @@ openai = new OpenAI(openaiConfig);
 app.use(cors());
 app.use(express.json());
 
-// === МЕНЮ ВАЛЮТ ===
+// === СПИСОК ПРИВЕТСТВИЙ ===
+const GREETINGS = ['привет', 'здравствуйте', 'ку', 'хай', 'hello', 'hi', 'салам', 'добрый день', 'добрый вечер', 'доброе утро', 'start', '/start'];
+
+// === КЛАВИАТУРА ВАЛЮТ (ДЛЯ ПРИВЕТСТВИЯ И НАСТРОЕК) ===
 const getCurrencyMenu = () => Markup.inlineKeyboard([
   [Markup.button.callback('🇺🇿 UZS', 'curr_UZS'), Markup.button.callback('🇺🇸 USD', 'curr_USD')],
   [Markup.button.callback('🇷🇺 RUB', 'curr_RUB'), Markup.button.callback('🇰🇿 KZT', 'curr_KZT')],
@@ -114,6 +117,7 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
       RULES: "25k"=25000. Type: income/expense. Category from list. Currency from text or default.
       List: [Еда, Продукты, Такси, Транспорт, Зарплата, Стипендия, Дивиденды, Вклады, Здоровье, Развлечения, Кафе, Связь, Дом, Одежда, Техника, Табак, Прочее]
       Return JSON only.
+      Example: {"amount": 50000, "category": "Еда", "type": "expense", "currency": "UZS"}
     `;
 
     const completion = await openai.chat.completions.create({
@@ -129,7 +133,7 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
 
 // --- BOT LOGIC ---
 
-// Красивое приветствие + Меню
+// Команда /start и Приветствия
 bot.start(async (ctx) => {
   const { id, first_name, username } = ctx.from;
   try {
@@ -140,16 +144,16 @@ bot.start(async (ctx) => {
     });
     
     const subStatus = await checkSubscription(user.id);
-    const statusText = subStatus.isPro ? "🌟 PRO (Безлимит)" : `Осталось записей: ${subStatus.remaining} (из 50)`;
+    const statusText = subStatus.isPro ? "🌟 PRO" : `Лимит: ${subStatus.remaining}/50`;
 
-    await ctx.reply(`👋 <b>Привет, ${first_name}!</b>\n\nЯ Theo AI — твой умный финансовый помощник.\n\n💰 Твоя валюта: <b>${user.currency}</b>\n📊 Твой статус: <b>${statusText}</b>\n\nПиши расходы просто так: <i>"Такси 20к"</i> или <i>"Обед 50000"</i>.`, {
+    // ВОЗВРАЩАЕМ МЕНЮ С ВАЛЮТАМИ
+    await ctx.reply(`👋 <b>Привет, ${first_name}!</b>\n\nЯ Theo AI — твой умный финансовый помощник.\n\n💰 Твоя валюта: <b>${user.currency}</b>\n📊 Статус: <b>${statusText}</b>\n\nЕсли валюта неверная, выбери новую ниже:`, {
         parse_mode: 'HTML',
         ...getCurrencyMenu()
     });
 
-    // Отдельно кнопка WebApp
-    await ctx.reply('👇 Нажми кнопку, чтобы открыть графики', 
-      Markup.keyboard([[Markup.button.webApp('📊 Моя статистика', process.env.WEBAPP_URL)]]).resize()
+    await ctx.reply('Или просто напиши трату: "Обед 50к".\nГрафики тут 👇', 
+      Markup.keyboard([[Markup.button.webApp('📊 Открыть Статистику', process.env.WEBAPP_URL)]]).resize()
     );
   } catch (e) { console.error(e); }
 });
@@ -158,11 +162,11 @@ bot.command('currency', async (ctx) => {
     await ctx.reply('Выберите валюту для учета:', getCurrencyMenu());
 });
 
-// Оплата
+// Оплата PRO
 bot.command('pro', async (ctx) => {
     return ctx.sendInvoice({
         title: 'Theo AI Pro (1 месяц)',
-        description: 'Снимает все лимиты на количество транзакций',
+        description: 'Безлимитные транзакции',
         payload: 'pro_sub_1month',
         provider_token: "", 
         currency: 'XTR',
@@ -181,10 +185,10 @@ bot.on('successful_payment', async (ctx) => {
         where: { telegramId: BigInt(userId) },
         data: { isPro: true, proExpiresAt: expiresAt }
     });
-    await ctx.reply('🎉 <b>Спасибо за покупку!</b>\nТеперь у вас безлимитный доступ к Theo AI Pro на 30 дней. 🌟', { parse_mode: 'HTML' });
+    await ctx.reply('🎉 <b>Спасибо!</b> Подписка активирована.', { parse_mode: 'HTML' });
 });
 
-// Смена валюты
+// Смена валюты (Кнопки)
 bot.action(/^curr_(.+)$/, async (ctx) => {
     const newCurrency = ctx.match[1];
     const userId = ctx.from.id;
@@ -202,20 +206,29 @@ bot.on('text', async (ctx) => {
     const user = await prisma.user.findUnique({ where: { telegramId: userId } });
     if (!user) return ctx.reply('Нажми /start');
     
+    const text = ctx.message.text.toLowerCase().trim();
+
+    // Приветствия
+    if (GREETINGS.includes(text.replace(/[!.]/g, ''))) {
+        return ctx.reply(`Привет! 👋 Я готов записывать расходы.\nПросто напиши: "Такси 20к"`);
+    }
+
     // Проверка лимита
     const subStatus = await checkSubscription(user.id);
     if (!subStatus.canAdd) {
-        return ctx.reply(`⛔ <b>Лимит исчерпан</b>\n\nВы достигли лимита в 50 записей за неделю.\nОформите подписку за 100 звезд, чтобы снять ограничения: /pro`, { parse_mode: 'HTML' });
+        return ctx.reply(`⛔ <b>Лимит исчерпан</b>\nКупите Pro за 100 звезд: /pro`, { parse_mode: 'HTML' });
     }
 
+    if (!/\d/.test(ctx.message.text) && !/(тысяч|миллион|к|k|m|м)/i.test(ctx.message.text)) {
+         return ctx.reply('⚠️ Напишите сумму, например: "Обед 50000".');
+    }
+    
     ctx.sendChatAction('typing');
+
     const result = await analyzeText(ctx.message.text, user.currency || 'UZS');
     
     if (!result || !result.amount) {
-        // Если это просто приветствие - не ругаемся
-        const text = ctx.message.text.toLowerCase();
-        if (['привет', 'ку', 'start'].some(w => text.includes(w))) return;
-        return ctx.reply('⚠️ Не нашел сумму. Напиши, например: "Такси 20к"');
+        return ctx.reply('⚠️ Не понял сумму. Попробуйте еще раз.');
     }
 
     const finalCurrency = result.currency || user.currency || 'UZS';
@@ -233,7 +246,6 @@ bot.on('text', async (ctx) => {
 
     // === ВОЗВРАЩАЕМ КРАСИВЫЙ ОТВЕТ С ЭМОДЗИ ===
     const emoji = getCategoryEmoji(result.category);
-    // Форматируем число с пробелами (10 000 вместо 10000)
     const formattedAmount = result.amount.toLocaleString(); 
     const sign = result.type === 'expense' ? '-' : '+';
     
@@ -270,13 +282,14 @@ app.get('/stats/:period', async (req, res) => {
     const subStatus = await checkSubscription(userId);
 
     const { period } = req.params;
-    let dateFilter = {};
     const now = new Date();
+    let dateFilter = {};
     if (period === 'day') dateFilter = { gte: startOfDay(now), lte: endOfDay(now) };
     if (period === 'week') dateFilter = { gte: startOfWeek(now), lte: endOfWeek(now) };
     if (period === 'month') dateFilter = { gte: startOfMonth(now), lte: endOfMonth(now) };
 
     const transactions = await prisma.transaction.findMany({ where: { userId, date: dateFilter }, orderBy: { date: 'desc' } });
+
     const stats = transactions.reduce((acc, curr) => {
       if (curr.type === 'expense') acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
       return acc;
@@ -294,17 +307,33 @@ app.get('/stats/:period', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Маршрут для инвойса из WebApp
+app.post('/payment/invoice', async (req, res) => {
+    try {
+        const userId = await getUserId(req);
+        if (!userId) return res.status(401).json({ error: 'Auth' });
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        
+        await bot.telegram.sendInvoice(Number(user.telegramId), {
+            title: 'Theo AI Pro',
+            description: 'Безлимитный доступ на 1 месяц',
+            payload: 'pro_sub_webapp',
+            provider_token: "", 
+            currency: 'XTR',
+            prices: [{ label: 'Pro 1 Month', amount: 100 }]
+        });
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: 'Error' }); }
+});
+
 app.delete('/transaction/:id', async (req, res) => {
-  try {
     const userId = await getUserId(req);
     if (!userId) return res.status(401).json({ error: 'Auth' });
     await prisma.transaction.delete({ where: { id: parseInt(req.params.id) } });
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/transaction/add', async (req, res) => {
-  try {
     const userId = await getUserId(req);
     if (!userId) return res.status(401).json({ error: 'Auth' });
     
@@ -323,26 +352,6 @@ app.post('/transaction/add', async (req, res) => {
         }
     });
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// Добавляем endpoint для инвойса, чтобы кнопка в Mini App работала
-app.post('/payment/invoice', async (req, res) => {
-    try {
-        const userId = await getUserId(req);
-        if (!userId) return res.status(401).json({ error: 'Auth' });
-        const user = await prisma.user.findUnique({ where: { id: userId } });
-        
-        await bot.telegram.sendInvoice(Number(user.telegramId), {
-            title: 'Theo AI Pro',
-            description: 'Безлимитный доступ на 1 месяц',
-            payload: 'pro_sub_webapp',
-            provider_token: "", 
-            currency: 'XTR',
-            prices: [{ label: 'Pro 1 Month', amount: 100 }]
-        });
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: 'Error' }); }
 });
 
 const PORT = process.env.PORT || 3000;
