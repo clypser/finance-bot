@@ -1,4 +1,4 @@
-loomybot.ru {
+:80 {
     root * /srv
     file_server
     encode gzip zstd
