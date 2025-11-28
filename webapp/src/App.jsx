@@ -261,7 +261,7 @@ const MainApp = () => {
                        <div className="relative z-10 flex items-center gap-4">
                            <div className="bg-white/25 p-2.5 rounded-2xl backdrop-blur-md border border-white/20"><Crown className="text-black" size={26} strokeWidth={2.5} /></div>
                            <div>
-                               <h3 className="font-extrabold text-black text-[15px]">Loomy AI Pro — 7 дней бесплатно</h3>
+                               <h3 className="font-extrabold text-black text-[15px]">Loomy AI Pro — купить</h3>
                                <p className="text-black/70 text-[11px] font-bold mt-0.5 uppercase">Осталось записей: {limitRemaining}</p>
                            </div>
                        </div>
