@@ -24,6 +24,11 @@ export default function AddModal({ isOpen, onClose, onAdd, editingItem }) {
       setType(editingItem.type);
       setCategory(editingItem.category);
       setDescription(editingItem.description);
+    } else {
+      setAmount('');
+      setType('expense');
+      setCategory('');
+      setDescription('');
     }
   }, [editingItem]);
 
@@ -92,4 +97,13 @@ export default function AddModal({ isOpen, onClose, onAdd, editingItem }) {
         </div>
 
         <button
-          className="w-full mt-6 bg-[#00E08F] text-black font-bold py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-
+          className="w-full mt-6 bg-[#00E08F] text-black font-bold py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95"
+          onClick={handleSubmit}
+        >
+          <Plus size={20} />
+          {editingItem ? 'Сохранить' : 'Добавить'}
+        </button>
+      </div>
+    </div>
+  );
+}
