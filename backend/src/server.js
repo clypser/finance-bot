@@ -11,7 +11,7 @@ const prisma = new PrismaClient();
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
 // === ЛОГ ЗАПУСКА ===
-console.log("🚀 Server restarting... Loomy AI Profile & Subscriptions Update");
+console.log("🚀 Server restarting... Fixed Greetings Error");
 
 // === НАСТРОЙКИ ===
 const apiKey = process.env.OPENAI_API_KEY;
@@ -35,6 +35,9 @@ openai = new OpenAI(openaiConfig);
 
 app.use(cors());
 app.use(express.json());
+
+// === СПИСКИ СЛОВ ===
+const GREETINGS = ['привет', 'здравствуйте', 'ку', 'хай', 'hello', 'hi', 'салам', 'добрый день', 'добрый вечер', 'доброе утро', 'start', '/start'];
 
 // === ТАРИФЫ ===
 const SUBSCRIPTION_PLANS = {
@@ -101,7 +104,6 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
 
 // --- BOT LOGIC ---
 
-// ПРОВЕРКА ПОДПИСКИ
 const checkSubscription = async (userId) => {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) return { isPro: false, canAdd: false, remaining: 0 };
@@ -160,25 +162,23 @@ bot.action(/^curr_(.+)$/, async (ctx) => {
     } catch (e) { console.error(e); }
 });
 
-// ОБРАБОТКА ПЛАТЕЖЕЙ
+// ОПЛАТА
 bot.on('pre_checkout_query', (ctx) => ctx.answerPreCheckoutQuery(true));
 
 bot.on('successful_payment', async (ctx) => {
     const userId = ctx.from.id;
-    const payload = ctx.message.successful_payment.invoice_payload; // например 'sub_3_months'
+    const payload = ctx.message.successful_payment.invoice_payload; 
     
     let monthsToAdd = 1;
     if (payload.includes('3_months')) monthsToAdd = 3;
     if (payload.includes('12_months')) monthsToAdd = 12;
 
-    // Получаем пользователя, чтобы узнать текущую дату окончания (если есть)
     const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
     
     let expiresAt = user.proExpiresAt && new Date(user.proExpiresAt) > new Date() 
         ? new Date(user.proExpiresAt) 
         : new Date();
     
-    // Добавляем месяцы
     expiresAt = addMonths(expiresAt, monthsToAdd);
 
     await prisma.user.update({
@@ -186,7 +186,7 @@ bot.on('successful_payment', async (ctx) => {
         data: { isPro: true, proExpiresAt: expiresAt }
     });
     
-    await ctx.reply(`🎉 <b>Loomy Pro активирован!</b>\nСрок действия до: ${expiresAt.toLocaleDateString('ru-RU')}`, { parse_mode: 'HTML' });
+    await ctx.reply(`🎉 <b>Loomy Pro активирован!</b>\nДействует до: ${expiresAt.toLocaleDateString('ru-RU')}`, { parse_mode: 'HTML' });
 });
 
 bot.on('text', async (ctx) => {
@@ -200,12 +200,14 @@ bot.on('text', async (ctx) => {
         return ctx.reply(`⛔ <b>Лимит исчерпан</b>\nПерейдите в приложение, чтобы купить Pro.`, { parse_mode: 'HTML' });
     }
 
-    if (GREETINGS.includes(ctx.message.text.toLowerCase().replace(/[!.]/g, ''))) {
+    // Проверка приветствия (чтобы не отправлять в AI)
+    const textLower = ctx.message.text.toLowerCase().replace(/[!.]/g, '').trim();
+    if (GREETINGS.some(g => textLower === g)) {
         return ctx.reply(`Привет! 👋 Я готов записывать расходы.`);
     }
 
     if (!/\d/.test(ctx.message.text) && !/(тысяч|миллион|к|k|m|м)/i.test(ctx.message.text)) {
-         return ctx.reply('⚠️ Я не вижу сумму. Напиши, например: "Такси 20к"');
+        return ctx.reply('⚠️ Не вижу сумму. Напиши, например: "Такси 20к"');
     }
 
     const result = await analyzeText(ctx.message.text, user.currency || 'UZS');
@@ -256,16 +258,24 @@ app.get('/user/me', async (req, res) => {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     const sub = await checkSubscription(userId);
     
-    // Преобразуем BigInt в строку для JSON
     const safeUser = {
         ...user,
         telegramId: user.telegramId.toString(),
         proExpiresAt: user.proExpiresAt,
         isPro: sub.isPro
     };
-    
     res.json(safeUser);
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/user/currency', async (req, res) => {
+    try {
+        const userId = await getUserId(req);
+        if (!userId) return res.status(401).json({ error: 'Auth' });
+        const { currency } = req.body;
+        await prisma.user.update({ where: { id: userId }, data: { currency } });
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/stats/:period', async (req, res) => {
@@ -311,7 +321,6 @@ app.delete('/transaction/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ОЧИСТИТЬ ВСЕ ТРАНЗАКЦИИ
 app.delete('/transactions/clear', async (req, res) => {
   try {
     const userId = await getUserId(req);
@@ -321,12 +330,10 @@ app.delete('/transactions/clear', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// УДАЛИТЬ АККАУНТ
 app.delete('/user/delete', async (req, res) => {
   try {
     const userId = await getUserId(req);
     if (!userId) return res.status(401).json({ error: 'Auth' });
-    // Сначала удаляем транзакции, потом юзера
     await prisma.transaction.deleteMany({ where: { userId } });
     await prisma.budget.deleteMany({ where: { userId } });
     await prisma.debt.deleteMany({ where: { userId } });
@@ -336,7 +343,6 @@ app.delete('/user/delete', async (req, res) => {
 });
 
 app.post('/transaction/add', async (req, res) => {
-    // ... (остается без изменений, код ниже для полноты)
     const userId = await getUserId(req);
     if (!userId) return res.status(401).json({ error: 'Auth' });
     
@@ -357,12 +363,11 @@ app.post('/transaction/add', async (req, res) => {
     res.json({ success: true });
 });
 
-// ОПЛАТА (Инвойс)
 app.post('/payment/invoice', async (req, res) => {
     try {
         const userId = await getUserId(req);
         if (!userId) return res.status(401).json({ error: 'Auth' });
-        const { plan } = req.body; // '1_month', '3_months', '12_months'
+        const { plan } = req.body; 
         
         const selectedPlan = SUBSCRIPTION_PLANS[plan || '1_month'];
         const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -370,7 +375,7 @@ app.post('/payment/invoice', async (req, res) => {
         await bot.telegram.sendInvoice(Number(user.telegramId), {
             title: selectedPlan.title,
             description: 'Безлимитный доступ и премиум функции',
-            payload: `sub_${plan}`, // Передаем план в payload
+            payload: `sub_${plan}`, 
             provider_token: "", 
             currency: 'XTR',
             prices: [{ label: 'Pro', amount: selectedPlan.price }]
