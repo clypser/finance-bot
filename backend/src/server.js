@@ -11,7 +11,7 @@ const prisma = new PrismaClient();
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
 // === ЛОГ ЗАПУСКА ===
-console.log("🚀 Server restarting... Fixed Greetings Error");
+console.log("🚀 Server restarting... Fixed Text Parsing & WebApp");
 
 // === НАСТРОЙКИ ===
 const apiKey = process.env.OPENAI_API_KEY;
@@ -35,9 +35,6 @@ openai = new OpenAI(openaiConfig);
 
 app.use(cors());
 app.use(express.json());
-
-// === СПИСКИ СЛОВ ===
-const GREETINGS = ['привет', 'здравствуйте', 'ку', 'хай', 'hello', 'hi', 'салам', 'добрый день', 'добрый вечер', 'доброе утро', 'start', '/start'];
 
 // === ТАРИФЫ ===
 const SUBSCRIPTION_PLANS = {
@@ -80,15 +77,27 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
   try {
     if (!apiKey) throw new Error("API Key missing");
 
-    let cleanText = text.replace(/(\d+)\s*[kк]/gi, (match, p1) => p1 + '000');
-    cleanText = cleanText.replace(/(\d+)\s*(m|м|млн)/gi, (match, p1) => p1 + '000000');
+    // === УЛУЧШЕННАЯ ОЧИСТКА ТЕКСТА ===
+    let cleanText = text.toLowerCase();
+    // Заменяем "к", "k" на "000" (200к -> 200000)
+    cleanText = cleanText.replace(/(\d+)\s*[kк]/g, (match, p1) => p1 + '000');
+    // Заменяем "м", "m", "млн" на "000000" (5млн -> 5000000)
+    cleanText = cleanText.replace(/(\d+)\s*(m|м|млн)/g, (match, p1) => p1 + '000000');
+    // Убираем пробелы внутри чисел (10 000 -> 10000)
+    cleanText = cleanText.replace(/(\d)\s+(\d)/g, '$1$2');
+
+    console.log(`🔍 Analyzing: "${text}" -> Parsed: "${cleanText}"`);
 
     const prompt = `
       Analyze transaction: "${cleanText}".
       User Default Currency: ${userCurrency}.
-      RULES: Extract Amount (number), Currency (string), Category (Russian), Type ("income"|"expense").
-      Categories: [Еда, Продукты, Такси, Транспорт, Зарплата, Стипендия, Дивиденды, Вклады, Здоровье, Развлечения, Кафе, Связь, Дом, Одежда, Техника, Табак, Прочее]
-      Return JSON only.
+      RULES: 
+      1. Extract Amount (number). Example: "200000" -> 200000.
+      2. Extract Currency (string). IF not in text, use "${userCurrency}".
+      3. Extract Category (string, Russian).
+      4. Determine Type ("income"|"expense").
+      
+      Output JSON ONLY.
     `;
 
     const completion = await openai.chat.completions.create({
@@ -128,6 +137,8 @@ const checkSubscription = async (userId) => {
   return { isPro: false, canAdd: count < LIMIT, remaining: Math.max(0, LIMIT - count), expiresAt: null };
 };
 
+const GREETINGS = ['привет', 'здравствуйте', 'ку', 'хай', 'hello', 'hi', 'салам', 'добрый день', 'добрый вечер', 'доброе утро', 'start', '/start'];
+
 bot.start(async (ctx) => {
   const { id, first_name, username } = ctx.from;
   try {
@@ -137,7 +148,7 @@ bot.start(async (ctx) => {
       create: { telegramId: BigInt(id), firstName: first_name, username, currency: 'UZS' }
     });
     
-    await ctx.reply(`👋 <b>Привет, ${first_name}!</b>\n\nЯ Loomy AI — твой умный финансовый помощник.\n\n💰 Твоя валюта: <b>${user.currency}</b>\n\nПиши расходы просто так: <i>"Такси 20к"</i> или <i>"Обед 50000"</i>.`, {
+    await ctx.reply(`👋 <b>Привет, ${first_name}!</b>\n\nЯ <b>Loomy AI</b> — твой умный финансовый помощник.\n\n💰 Твоя валюта: <b>${user.currency}</b>\n\nПросто напиши мне свои расходы:\n<i>"Такси 20к"</i> или <i>"Обед 50000"</i>`, {
         parse_mode: 'HTML',
         ...getCurrencyMenu()
     });
@@ -162,7 +173,7 @@ bot.action(/^curr_(.+)$/, async (ctx) => {
     } catch (e) { console.error(e); }
 });
 
-// ОПЛАТА
+// ОБРАБОТКА ПЛАТЕЖЕЙ
 bot.on('pre_checkout_query', (ctx) => ctx.answerPreCheckoutQuery(true));
 
 bot.on('successful_payment', async (ctx) => {
@@ -200,19 +211,19 @@ bot.on('text', async (ctx) => {
         return ctx.reply(`⛔ <b>Лимит исчерпан</b>\nПерейдите в приложение, чтобы купить Pro.`, { parse_mode: 'HTML' });
     }
 
-    // Проверка приветствия (чтобы не отправлять в AI)
     const textLower = ctx.message.text.toLowerCase().replace(/[!.]/g, '').trim();
     if (GREETINGS.some(g => textLower === g)) {
         return ctx.reply(`Привет! 👋 Я готов записывать расходы.`);
     }
 
+    // Проверка на наличие цифр или слов-обозначений (к, млн, тысяч)
     if (!/\d/.test(ctx.message.text) && !/(тысяч|миллион|к|k|m|м)/i.test(ctx.message.text)) {
-        return ctx.reply('⚠️ Не вижу сумму. Напиши, например: "Такси 20к"');
+         return ctx.reply('⚠️ Не вижу сумму. Напиши, например: "Такси 20к"');
     }
 
     const result = await analyzeText(ctx.message.text, user.currency || 'UZS');
     
-    if (!result || !result.amount) return ctx.reply('⚠️ Не понял сумму.');
+    if (!result || !result.amount) return ctx.reply('⚠️ Не понял сумму. Попробуйте написать числом: "20000"');
 
     await prisma.transaction.create({
       data: {
@@ -227,9 +238,13 @@ bot.on('text', async (ctx) => {
 
     const emoji = getCategoryEmoji(result.category);
     const formattedAmount = result.amount.toLocaleString(); 
-    const sign = result.type === 'expense' ? '-' : '+';
+    const currency = result.currency || user.currency;
     
-    await ctx.reply(`✅ ${sign}${formattedAmount} ${result.currency || user.currency} | ${emoji} ${result.category}`);
+    if (result.type === 'expense') {
+        await ctx.reply(`💸 <b>Расход:</b> ${formattedAmount} ${currency}\n${emoji} <b>Категория:</b> ${result.category}`, { parse_mode: 'HTML' });
+    } else {
+        await ctx.reply(`💰 <b>Доход:</b> ${formattedAmount} ${currency}\n${emoji} <b>Категория:</b> ${result.category}`, { parse_mode: 'HTML' });
+    }
 
   } catch (e) {
     console.error(e);
