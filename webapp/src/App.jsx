@@ -19,8 +19,6 @@ const INCOME_CATEGORIES = ['Зарплата', 'Аванс', 'Премия', 'С
 
 const ErrorBoundary = ({ children }) => children;
 
-// === КОМПОНЕНТЫ (AddModal, SubscriptionView, ProfileView, DebtsView - они такие же, как раньше, но я их снова приведу для целостности)
-
 const AddModal = ({ isOpen, onClose, onAdd, editingItem }) => {
   const [amount, setAmount] = useState('');
   const [type, setType] = useState('expense');
@@ -89,15 +87,15 @@ const SubscriptionView = ({ onBack, user, onBuy }) => {
         { id: '3_months', title: 'План на 3 месяца', price: 270, desc: 'Экономия ~10%', label: '270 звезд' },
         { id: '12_months', title: 'Годовой план', price: 1000, desc: 'Лучшая цена', label: '1000 звезд', best: true },
     ];
+    const expiresDate = user.proExpiresAt ? new Date(user.proExpiresAt).toLocaleDateString() : null;
+
     return (
         <div className="p-5 pb-32 font-sans min-h-screen bg-black animate-fade-in">
-            <div className="flex items-center gap-4 mb-6"><button onClick={onBack} className="p-2 bg-[#111111] rounded-full text-white"><ChevronRight className="rotate-180" /></button><h2 className="text-xl font-bold text-white">Подписка</h2></div>
-            <div className="space-y-3">{plans.map(p => (
-                <div key={p.id} onClick={() => setSelectedPlan(p.id)} className={`p-5 rounded-[24px] border cursor-pointer ${selectedPlan === p.id ? 'bg-[#111111] border-[#00E08F]' : 'bg-[#111111] border-white/5'}`}>
-                    <div className="flex justify-between items-center"><div><p className="font-bold text-white">{p.title}</p><p className="text-gray-500 text-xs">{p.desc}</p></div><p className="text-white font-bold">{p.price} ⭐️</p></div>
-                </div>
-            ))}</div>
-            <div className="fixed bottom-0 left-0 w-full px-5 py-6 bg-gradient-to-t from-black via-black to-transparent z-20"><button onClick={() => onBuy(selectedPlan)} className="w-full bg-[#00E08F] hover:bg-[#00c980] text-black font-extrabold text-[17px] py-4 rounded-[24px]">Оплатить</button></div>
+            <div className="flex items-center gap-4 mb-6"><button onClick={onBack} className="p-2 bg-[#111111] rounded-full text-white"><ChevronRight className="rotate-180" /></button><h2 className="text-xl font-bold text-white">Управление подпиской</h2></div>
+            <div className="flex justify-center mb-8"><div className="bg-[#111111] p-6 rounded-[32px] border border-white/10 flex flex-col items-center w-full"><div className="bg-green-500/10 p-4 rounded-2xl mb-4"><Crown className="text-[#00E08F] w-8 h-8" /></div><h3 className="text-white font-bold text-lg mb-1">Loomy AI Pro</h3><p className={user.isPro ? "text-green-500 text-sm font-medium" : "text-gray-500 text-sm"}>{user.isPro ? `Активна до ${expiresDate}` : 'Не активна'}</p></div></div>
+            <h3 className="text-white font-bold text-lg mb-4">Выберите план</h3>
+            <div className="space-y-3">{plans.map(p => (<div key={p.id} onClick={() => setSelectedPlan(p.id)} className={`p-5 rounded-[24px] border cursor-pointer relative ${selectedPlan === p.id ? 'bg-[#111111] border-[#00E08F]' : 'bg-[#111111] border-white/5'}`}>{p.best && <span className="absolute -top-3 left-6 bg-[#8B5CF6] text-white text-[10px] font-bold px-2 py-1 rounded-full">ЛУЧШАЯ ЦЕНА</span>}<div className="flex justify-between items-center"><div><p className="font-bold text-white">{p.title}</p><p className="text-gray-500 text-xs mt-1">{p.desc}</p></div><div className="text-right"><p className="text-white font-bold text-lg">{p.price}</p><div className="flex items-center justify-end text-yellow-500 text-xs gap-1"><Star size={10} fill="currentColor" /> Stars</div></div></div></div>))}</div>
+            <div className="fixed bottom-0 left-0 w-full px-5 py-6 bg-gradient-to-t from-black via-black to-transparent z-20"><button onClick={() => onBuy(selectedPlan)} className="w-full bg-[#00E08F] hover:bg-[#00c980] text-black font-extrabold text-[17px] py-4 rounded-[24px] active:scale-95 transition-all">Оплатить звездами</button></div>
         </div>
     );
 };
@@ -116,10 +114,14 @@ const DebtsView = ({ user, onBack, currency }) => {
         setIsModalOpen(false); fetchDebts();
     };
     const filteredDebts = debts.filter(d => filter === 'all' || d.type === filter);
+    const totalLent = debts.filter(d => d.type === 'lent').reduce((acc, d) => acc + d.amount, 0);
+    const totalBorrowed = debts.filter(d => d.type === 'borrowed').reduce((acc, d) => acc + d.amount, 0);
     return (
         <div className="p-5 pb-32 font-sans min-h-screen bg-black animate-fade-in">
              <div className="flex items-center gap-4 mb-6"><button onClick={onBack} className="p-2 bg-[#111111] rounded-full text-white"><ChevronRight className="rotate-180" /></button><h2 className="text-xl font-bold text-white">Долги</h2></div>
-             <div className="space-y-3">{filteredDebts.map(d => (<div key={d.id} onClick={() => { setEditingItem(d); setIsModalOpen(true); }} className="bg-[#111111] p-5 rounded-[24px] flex justify-between items-center border border-white/10"><p className="text-white font-bold">{d.personName}</p><p className="text-white font-bold">{d.amount} {currency}</p></div>))}</div>
+             <div className="flex gap-4 mb-6"><div className="flex-1 bg-[#111111] p-4 rounded-[24px] border border-white/10"><p className="text-red-500 text-xs font-bold mb-1 flex items-center gap-1"><ArrowDownLeft size={12}/> Я занял(а)</p><p className="text-red-500 text-lg font-black">{totalLent.toLocaleString()} <span className="text-xs">{currency}</span></p></div><div className="flex-1 bg-[#111111] p-4 rounded-[24px] border border-white/10"><p className="text-green-500 text-xs font-bold mb-1 flex items-center gap-1"><ArrowUpRight size={12}/> Мне должны</p><p className="text-green-500 text-lg font-black">{totalBorrowed.toLocaleString()} <span className="text-xs">{currency}</span></p></div></div>
+             <div className="flex gap-2 mb-6 overflow-x-auto">{[['all', 'Все'], ['lent', 'Я занял(а)'], ['borrowed', 'Мне должны']].map(([key, label]) => (<button key={key} onClick={() => setFilter(key)} className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-colors ${filter === key ? 'bg-[#00E08F] text-black' : 'bg-[#111111] text-gray-500 border border-white/10'}`}>{label}</button>))}</div>
+             <div className="space-y-3">{filteredDebts.length === 0 ? (<div className="bg-[#111111] p-8 rounded-[32px] flex flex-col items-center justify-center text-center border border-white/5"><div className="bg-black p-4 rounded-full mb-3"><CheckCircle className="text-gray-600" size={32} /></div><p className="text-white font-bold">Долги не найдены</p></div>) : (filteredDebts.map(d => (<div key={d.id} onClick={() => { setEditingItem(d); setIsModalOpen(true); }} className="bg-[#111111] p-5 rounded-[24px] flex justify-between items-center border border-white/10"><p className="text-white font-bold">{d.personName}</p><p className="text-white font-bold">{d.amount} {currency}</p><button onClick={(e) => { e.stopPropagation(); handleDelete(d.id); }} className="mt-1 text-gray-600 hover:text-red-500"><Trash2 size={16} /></button></div>)))}</div>
              <AddModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onAdd={handleSave} editingItem={editingItem} />
             <div className="fixed bottom-0 left-0 w-full px-5 py-6 bg-gradient-to-t from-black via-black to-transparent z-20"><button onClick={() => { setEditingItem(null); setIsModalOpen(true); }} className="w-full bg-[#00E08F] text-black font-extrabold text-[17px] py-4 rounded-[24px] flex items-center justify-center gap-2"><Plus strokeWidth={3} size={20} /> Добавить долг</button></div>
         </div>
@@ -132,19 +134,13 @@ const ProfileView = ({ user, onBack, onOpenSub, onClearData, onDeleteAccount, on
         <div className="p-5 pb-32 font-sans min-h-screen bg-black animate-fade-in">
             <div className="flex items-center gap-4 mb-6"><button onClick={onBack} className="p-2 bg-[#111111] rounded-full text-white"><ChevronRight className="rotate-180" /></button><h2 className="text-xl font-bold text-white">Профиль</h2></div>
             <div className="bg-[#111111] p-5 rounded-[24px] border border-white/10 flex items-center justify-between mb-6">
-                <div className="flex items-center gap-4"><div className="w-12 h-12 rounded-full bg-gray-800 flex items-center justify-center text-2xl">😎</div><div><h3 className="text-white font-bold text-lg">{user.firstName}</h3><p className="text-gray-500 text-xs">@{user.username}</p></div></div>
-                <div onClick={onOpenSub} className="cursor-pointer bg-green-500/10 text-green-500 px-3 py-1.5 rounded-full text-xs font-bold border border-green-500/20">{user.isPro ? 'PRO' : 'FREE'}</div>
-            </div>
-            <div className="bg-[#111111] rounded-[24px] border border-white/10 overflow-hidden mb-6">
-                <div onClick={onOpenSub} className="p-4 flex justify-between items-center border-b border-white/5 cursor-pointer"><div className="flex items-center gap-3"><CreditCard size={20} className="text-[#00E08F]" /><span className="text-white font-bold">Управление подпиской</span></div><ChevronRight className="text-gray-600" size={20} /></div>
-                <div className="p-4 flex justify-between items-center"><div className="flex items-center gap-3"><Banknote size={20} className="text-gray-400" /><span className="text-white font-medium">Валюта</span></div><select value={user.currency} onChange={(e) => onCurrencyChange(e.target.value)} className="bg-black text-white text-sm p-1 rounded border border-white/20 outline-none">{currencies.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-            </div>
-            <div className="space-y-3"><button onClick={onClearData} className="w-full bg-[#111111] border border-white/10 text-white font-bold py-4 rounded-[20px]"><Trash2 size={18} /> Очистить все транзакции</button></div>
+                <div className="flex items-center gap-4"><div className="w-12 h-12 rounded-full bg-gray-800 flex items-center justify-center text-2xl">😎</div><div><h3 className="text-white font-bold text-lg">{user.firstName}</h3><p className="text-gray-500 text-xs">@{user.username}</p></div></div><div onClick={onOpenSub} className="cursor-pointer bg-green-500/10 text-green-500 px-3 py-1.5 rounded-full text-xs font-bold border border-green-500/20">{user.isPro ? 'PRO' : 'FREE'}</div></div>
+            <div className="bg-[#111111] rounded-[24px] border border-white/10 overflow-hidden mb-6"><div onClick={onOpenSub} className="p-4 flex justify-between items-center border-b border-white/5 cursor-pointer"><div className="flex items-center gap-3"><CreditCard size={20} className="text-[#00E08F]" /><span className="text-white font-bold">Управление подпиской</span></div><ChevronRight className="text-gray-600" size={20} /></div><div className="p-4 flex justify-between items-center"><div className="flex items-center gap-3"><Banknote size={20} className="text-gray-400" /><span className="text-white font-medium">Валюта</span></div><select value={user.currency} onChange={(e) => onCurrencyChange(e.target.value)} className="bg-black text-white text-sm p-1 rounded border border-white/20 outline-none">{currencies.map(c => <option key={c} value={c}>{c}</option>)}</select></div></div>
+            <div className="space-y-3"><button onClick={onClearData} className="w-full bg-[#111111] border border-white/10 text-white font-bold py-4 rounded-[20px]"><Trash2 size={18} /> Очистить все транзакции</button><button onClick={onDeleteAccount} className="w-full bg-red-600/10 border border-red-600/30 text-red-500 font-bold py-4 rounded-[20px] flex items-center justify-center gap-2 active:scale-95 transition-transform hover:bg-red-600/20"><LogOut size={18} /> Удалить аккаунт</button></div>
         </div>
     );
 };
 
-// НОВЫЙ КОМПОНЕНТ: AI Advice Card
 const AiAdviceCard = ({ onGetAdvice }) => {
     const [advice, setAdvice] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -155,19 +151,14 @@ const AiAdviceCard = ({ onGetAdvice }) => {
         setAdvice(text);
         setLoading(false);
     };
-
     if (advice) {
         return (
             <div className="bg-gradient-to-br from-indigo-900/80 to-purple-900/80 p-5 rounded-[28px] border border-indigo-500/30 shadow-lg animate-fade-in mb-4 relative overflow-hidden">
-                 <div className="flex justify-between items-start mb-2">
-                    <div className="flex items-center gap-2 text-indigo-300 font-bold text-xs uppercase tracking-wider"><Sparkles size={14} /> Совет от Loomy</div>
-                    <button onClick={() => setAdvice(null)} className="text-indigo-300/50 hover:text-white"><X size={16} /></button>
-                 </div>
+                 <div className="flex justify-between items-start mb-2"><div className="flex items-center gap-2 text-indigo-300 font-bold text-xs uppercase tracking-wider"><Sparkles size={14} /> Совет от Loomy</div><button onClick={() => setAdvice(null)} className="text-indigo-300/50 hover:text-white"><X size={16} /></button></div>
                  <p className="text-white text-sm leading-relaxed font-medium">"{advice}"</p>
             </div>
         );
     }
-
     return (
         <div onClick={handleGetAdvice} className="bg-[#111111] p-4 rounded-[24px] border border-white/10 mb-4 flex items-center justify-between cursor-pointer hover:bg-white/5 active:scale-[0.98] transition-all">
             <div className="flex items-center gap-3">
