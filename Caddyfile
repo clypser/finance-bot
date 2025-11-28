@@ -2,9 +2,13 @@
     email youremail@gmail.com
 }
 
-loomybot.ru {
+:80 {
     root * /srv
     file_server
-    try_files {path} /index.html
-    encode gzip zstd
+}
+
+:443 {
+    root * /srv
+    file_server
+    tls youremail@gmail.com
 }
