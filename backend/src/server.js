@@ -4,7 +4,7 @@ const { OpenAI } = require('openai');
 const { PrismaClient } = require('@prisma/client');
 const cors = require('cors');
 const { HttpsProxyAgent } = require('https-proxy-agent');
-const axios = require('axios'); // Используем для запросов к Gemini
+const axios = require('axios');
 const { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, addMonths } = require('date-fns');
 
 const app = express();
@@ -12,7 +12,7 @@ const prisma = new PrismaClient();
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
 // === ЛОГ ЗАПУСКА ===
-console.log("🚀 Server restarting... Loomy AI 3.1 (Gemini Advice)");
+console.log("🚀 Server restarting... Loomy AI 3.2 (Fix GREETINGS)");
 
 // === НАСТРОЙКИ ===
 const apiKey = process.env.OPENAI_API_KEY;
@@ -44,6 +44,10 @@ const SUBSCRIPTION_PLANS = {
     '3_months': { title: 'Loomy Pro (3 месяца)', price: 270, months: 3 },
     '12_months': { title: 'Loomy Pro (1 год)', price: 1000, months: 12 },
 };
+
+// === КОНСТАНТЫ ДЛЯ ОБРАБОТКИ ТЕКСТА (ИСПРАВЛЕНО) ===
+const GREETINGS = ['привет', 'здравствуйте', 'ку', 'хай', 'hello', 'hi', 'салам', 'добрый день', 'добрый вечер', 'доброе утро', 'start', '/start'];
+
 
 // === КЛАВИАТУРА ВАЛЮТ ===
 const getCurrencyMenu = () => Markup.inlineKeyboard([
@@ -134,7 +138,6 @@ const getGeminiAdvice = async (transactions, currency) => {
     `;
 
     try {
-        // Прямой запрос к Gemini API
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`;
         
         const response = await axios.post(url, {
@@ -173,8 +176,6 @@ const checkSubscription = async (userId) => {
   const LIMIT = 50;
   return { isPro: false, canAdd: count < LIMIT, remaining: Math.max(0, LIMIT - count), expiresAt: null };
 };
-
-const GREETINGS = ['привет', 'здравствуйте', 'ку', 'хай', 'hello', 'hi', 'салам', 'добрый день', 'добрый вечер', 'доброе утро', 'start', '/start'];
 
 bot.start(async (ctx) => {
   const { id, first_name, username } = ctx.from;
