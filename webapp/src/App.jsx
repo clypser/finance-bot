@@ -2,6 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Wallet, PieChart as PieIcon, Plus, ArrowUpRight, ArrowDownLeft, Target, Crown, X, CreditCard, Banknote, BarChart3, ChevronRight, Trash2, User, LogOut, Star, Zap, CheckCircle, Sparkles, Loader2, HandCoins } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import AiAdviceCard from './AiAdviceCard';
+import DebtsView from './DebtsView';
+import DebtsView from './ProfileView.jsx';
+import DebtsView from './AddModal.jsx';
+import DebtsView from './SubscriptionView.jsx';
 
 const API_URL = 'https://loomybot.ru'; // <-- Вставь сюда URL API, например: 'http://localhost:3000'
 
