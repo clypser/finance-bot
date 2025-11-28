@@ -1,23 +1,20 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 
+// Очень важно: Mini-app Telegram требует base: "./"
+// иначе пути к JS ломаются и ты видишь БЕЛЫЙ экран
 export default defineConfig({
   plugins: [react()],
-  server: {
-    host: true,
-    port: 80,
-    // Разрешаем любые хосты (чтобы не было ошибки "Invalid Host Header")
-    allowedHosts: true, 
-    proxy: {
-      // Проксируем запросы к бэкенду
-      '/stats': 'http://backend:3000',
-      '/transaction': 'http://backend:3000',
-      '/user': 'http://backend:3000',
-      '/payment': 'http://backend:3000',
-      '/transactions': 'http://backend:3000'
-    }
+
+  base: './',   // <-- критически важно для Telegram WebApp
+
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    assetsDir: 'assets',
   },
-  preview: {
+
+  server: {
     host: true,
     port: 80,
     allowedHosts: true,
@@ -28,5 +25,11 @@ export default defineConfig({
       '/payment': 'http://backend:3000',
       '/transactions': 'http://backend:3000'
     }
+  },
+
+  preview: {
+    host: true,
+    port: 80,
+    allowedHosts: true
   }
-})
+});
