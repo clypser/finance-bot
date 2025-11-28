@@ -3,7 +3,7 @@ const { Telegraf, Markup } = require('telegraf');
 const { OpenAI } = require('openai');
 const { PrismaClient } = require('@prisma/client');
 const cors = require('cors');
-// const { HttpsProxyAgent } = require('https-proxy-agent'); // УДАЛЕНО!
+const { HttpsProxyAgent } = require('https-proxy-agent');
 const { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, addMonths } = require('date-fns');
 
 const app = express();
@@ -11,12 +11,11 @@ const prisma = new PrismaClient();
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
 // === ЛОГ ЗАПУСКА ===
-console.log("🚀 Server restarting... CRITICAL FIX: Direct Connect (No Proxy)");
+console.log("🚀 Server starting with PROXY support...");
 
 // === НАСТРОЙКИ ===
 const apiKey = process.env.OPENAI_API_KEY;
-// const proxyUrl = process.env.PROXY_URL; // УДАЛЕНО!
-// const baseURL = process.env.OPENAI_BASE_URL; // УДАЛЕНО!
+const proxyUrl = process.env.HTTP_PROXY || "http://7zLCQG:4wKcN3@45.130.130.81:8000";
 
 let openai;
 
@@ -24,7 +23,20 @@ const openaiConfig = {
   apiKey: apiKey || "",
 };
 
-// Прокси удален, подключаемся напрямую!
+// === КОНФИГУРАЦИЯ ПРОКСИ ===
+if (proxyUrl) {
+  console.log(`🔧 Using proxy: ${proxyUrl}`);
+  try {
+    const proxyAgent = new HttpsProxyAgent(proxyUrl);
+    openaiConfig.httpAgent = proxyAgent;
+    console.log("✅ Proxy agent configured successfully");
+  } catch (proxyError) {
+    console.error("❌ Proxy configuration failed:", proxyError);
+  }
+} else {
+  console.log("⚠️ No proxy configured - using direct connection");
+}
+
 openai = new OpenAI(openaiConfig);
 
 app.use(cors());
@@ -75,9 +87,9 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
     let cleanText = text.toLowerCase();
     cleanText = cleanText.replace(/(\d+)\s*[kк]/g, (match, p1) => p1 + '000');
     cleanText = cleanText.replace(/(\d+)\s*(m|м|млн)/g, (match, p1) => p1 + '000000');
-    cleanText = cleanText.replace(/(\d)\s+(\d)/g, '$1$2'); // Убираем пробелы (10 000 -> 10000)
+    cleanText = cleanText.replace(/(\d)\s+(\d)/g, '$1$2');
 
-    console.log(`🔍 Sending to OpenAI: "${cleanText}" (Attempting Direct Connection)`);
+    console.log(`🔍 Sending to OpenAI via Proxy: "${cleanText}"`);
 
     const prompt = `
       Analyze transaction: "${cleanText}".
@@ -96,20 +108,19 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
       messages: [{ role: "user", content: prompt }],
       model: "gpt-4o", 
       response_format: { type: "json_object" },
-      // Увеличим таймаут, чтобы избежать обрыва связи
-      timeout: 15000, 
+      timeout: 20000, // Увеличиваем таймаут для прокси
       temperature: 0.1 
     });
 
+    console.log("✅ OpenAI response received successfully");
     return JSON.parse(completion.choices[0].message.content);
   } catch (e) {
-    console.error("AI Error Details:", e);
-    // Теперь бот покажет, что именно сломалось
-    throw e; 
+    console.error("❌ AI Error with proxy:", e.message);
+    throw new Error(`OpenAI API Error: ${e.message}`);
   }
 };
 
-// --- BOT LOGIC (Без изменений, но с новой логикой AI) ---
+// --- BOT LOGIC ---
 const checkSubscription = async (userId) => {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) return { isPro: false, canAdd: false, remaining: 0 };
@@ -148,7 +159,10 @@ bot.start(async (ctx) => {
     await ctx.reply('👇 Нажми кнопку, чтобы открыть приложение', 
       Markup.keyboard([[Markup.button.webApp('📱 Открыть Loomy AI', process.env.WEBAPP_URL)]]).resize()
     );
-  } catch (e) { console.error(e); }
+  } catch (e) { 
+    console.error("Start command error:", e);
+    await ctx.reply("❌ Произошла ошибка при запуске бота");
+  }
 });
 
 bot.command('currency', async (ctx) => {
@@ -162,7 +176,10 @@ bot.action(/^curr_(.+)$/, async (ctx) => {
         await prisma.user.update({ where: { telegramId: BigInt(userId) }, data: { currency: newCurrency } });
         await ctx.answerCbQuery(`Валюта: ${newCurrency}`);
         await ctx.editMessageText(`✅ Валюта изменена на <b>${newCurrency}</b>`, { parse_mode: 'HTML' });
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+        console.error("Currency change error:", e);
+        await ctx.answerCbQuery("❌ Ошибка при смене валюты");
+    }
 });
 
 bot.on('pre_checkout_query', (ctx) => ctx.answerPreCheckoutQuery(true));
@@ -199,17 +216,15 @@ bot.on('text', async (ctx) => {
         return ctx.reply(`Привет! 👋 Я готов записывать расходы.`);
     }
 
-    // Пропускаем проверку на цифры, чтобы бот пытался понять "Обед" как расход, если там есть смысл, 
-    // но лучше оставить базовый фильтр от случайного текста
     if (!/\d/.test(ctx.message.text) && !/(тысяч|миллион|к|k|m|м)/i.test(ctx.message.text)) {
          return ctx.reply('⚠️ Не вижу сумму. Напиши, например: "Такси 20к"');
     }
 
+    console.log(`📨 Processing message from user ${userId}: "${ctx.message.text}"`);
     const result = await analyzeText(ctx.message.text, user.currency || 'UZS');
     
     if (!result || !result.amount) {
-        // Мы возвращаем AI-ошибку, чтобы вы увидели, почему именно он не понял
-        throw new Error("AI did not return amount."); 
+        throw new Error("AI не смог определить сумму из текста");
     }
 
     await prisma.transaction.create({
@@ -234,13 +249,10 @@ bot.on('text', async (ctx) => {
     }
 
   } catch (e) {
-    console.error(e);
-    // Теперь бот покажет настоящую ошибку!
-    ctx.reply(`❌ Ошибка AI: ${e.message}\n(Проверьте прокси или баланс OpenAI)`);
+    console.error("Message processing error:", e);
+    ctx.reply(`❌ Ошибка: ${e.message}\nПопробуйте еще раз или измените текст`);
   }
 });
-
-bot.launch();
 
 // --- API ROUTES ---
 const getUserId = async (req) => {
@@ -251,7 +263,10 @@ const getUserId = async (req) => {
     let user = await prisma.user.findUnique({ where: { telegramId } });
     if (!user && tid === '123456789') user = await prisma.user.create({ data: { telegramId, firstName: "Demo", username: "demo" } });
     return user ? user.id : null;
-  } catch (e) { return null; }
+  } catch (e) { 
+    console.error("Get user ID error:", e);
+    return null; 
+  }
 };
 
 app.get('/user/me', async (req, res) => {
@@ -262,7 +277,10 @@ app.get('/user/me', async (req, res) => {
     const sub = await checkSubscription(userId);
     const safeUser = { ...user, telegramId: user.telegramId.toString(), proExpiresAt: user.proExpiresAt, isPro: sub.isPro };
     res.json(safeUser);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { 
+    console.error("User me error:", e);
+    res.status(500).json({ error: e.message }); 
+  }
 });
 
 app.post('/user/currency', async (req, res) => {
@@ -271,7 +289,10 @@ app.post('/user/currency', async (req, res) => {
         if (!userId) return res.status(401).json({ error: 'Auth' });
         await prisma.user.update({ where: { id: userId }, data: { currency: req.body.currency } });
         res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { 
+        console.error("Currency change API error:", e);
+        res.status(500).json({ error: e.message }); 
+    }
 });
 
 app.get('/stats/:period', async (req, res) => {
@@ -290,7 +311,10 @@ app.get('/stats/:period', async (req, res) => {
     const stats = transactions.reduce((acc, curr) => { if (curr.type === 'expense') acc[curr.category] = (acc[curr.category] || 0) + curr.amount; return acc; }, {});
     const chartData = Object.keys(stats).map(key => ({ name: key, value: stats[key] }));
     res.json({ transactions, chartData, total: transactions.length, currency: user?.currency || 'UZS', isPro: subStatus.isPro, limitRemaining: subStatus.remaining });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { 
+    console.error("Stats error:", e);
+    res.status(500).json({ error: e.message }); 
+  }
 });
 
 app.delete('/transaction/:id', async (req, res) => {
@@ -299,7 +323,10 @@ app.delete('/transaction/:id', async (req, res) => {
     if (!userId) return res.status(401).json({ error: 'Auth' });
     await prisma.transaction.delete({ where: { id: parseInt(req.params.id) } });
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { 
+    console.error("Delete transaction error:", e);
+    res.status(500).json({ error: e.message }); 
+  }
 });
 
 app.delete('/transactions/clear', async (req, res) => {
@@ -308,7 +335,10 @@ app.delete('/transactions/clear', async (req, res) => {
     if (!userId) return res.status(401).json({ error: 'Auth' });
     await prisma.transaction.deleteMany({ where: { userId } });
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { 
+    console.error("Clear transactions error:", e);
+    res.status(500).json({ error: e.message }); 
+  }
 });
 
 app.delete('/user/delete', async (req, res) => {
@@ -320,7 +350,10 @@ app.delete('/user/delete', async (req, res) => {
     await prisma.debt.deleteMany({ where: { userId } });
     await prisma.user.delete({ where: { id: userId } });
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { 
+    console.error("Delete user error:", e);
+    res.status(500).json({ error: e.message }); 
+  }
 });
 
 app.post('/transaction/add', async (req, res) => {
@@ -350,10 +383,30 @@ app.post('/payment/invoice', async (req, res) => {
             prices: [{ label: 'Pro', amount: selectedPlan.price }]
         });
         res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: 'Error' }); }
+    } catch (e) { 
+        console.error("Payment invoice error:", e);
+        res.status(500).json({ error: 'Error' }); 
+    }
 });
 
+// === ЗАПУСК СЕРВЕРА ===
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => console.log(`Server running on ${PORT}`));
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+bot.launch().then(() => {
+  console.log(`🤖 Telegram Bot started successfully`);
+}).catch(err => {
+  console.error('❌ Bot launch failed:', err);
+});
+
+app.listen(PORT, '0.0.0.0', () => console.log(`🌐 Server running on port ${PORT}`));
+
+process.once('SIGINT', () => {
+  console.log('🛑 Shutting down gracefully...');
+  bot.stop('SIGINT');
+  process.exit(0);
+});
+
+process.once('SIGTERM', () => {
+  console.log('🛑 Shutting down gracefully...');
+  bot.stop('SIGTERM');
+  process.exit(0);
+});
