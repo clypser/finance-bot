@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Wallet, PieChart as PieIcon, Plus, ArrowUpRight, ArrowDownLeft, Target, Crown, X, CreditCard, Banknote, BarChart3, ChevronRight, Trash2, User, LogOut, Star, Zap, CheckCircle, Sparkles, Loader2, HandCoins } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 
-const API_URL = 'loomybot.ru'; // <-- Вставь сюда URL API, например: 'http://localhost:3000'
+const API_URL = 'https://loomybot.ru'; // <-- Вставь сюда URL API, например: 'http://localhost:3000'
 
 // === СТИЛИ (можно оставить как есть) ===
 const shimmerStyle = `
