@@ -4,7 +4,7 @@ const { OpenAI } = require('openai');
 const { PrismaClient } = require('@prisma/client');
 const cors = require('cors');
 const { HttpsProxyAgent } = require('https-proxy-agent');
-const axios = require('axios'); // Используем axios для Gemini
+const axios = require('axios');
 const { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, addMonths } = require('date-fns');
 
 const app = express();
@@ -12,7 +12,7 @@ const prisma = new PrismaClient();
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
 // === ЛОГ ЗАПУСКА ===
-console.log("🚀 Server restarting... Loomy AI 3.2 (Gemini Advice Fixed)");
+console.log("🚀 Server restarting... Loomy AI 3.2 (Fix GREETINGS)");
 
 // === НАСТРОЙКИ ===
 const apiKey = process.env.OPENAI_API_KEY;
@@ -21,7 +21,6 @@ const proxyUrl = process.env.PROXY_URL;
 const baseURL = process.env.OPENAI_BASE_URL;
 
 let openai;
-let httpsAgent = null;
 
 const openaiConfig = {
   apiKey: apiKey || "",
@@ -30,8 +29,8 @@ const openaiConfig = {
 
 if (proxyUrl) {
   console.log(`🌐 Using Proxy: ${proxyUrl}`);
-  httpsAgent = new HttpsProxyAgent(proxyUrl);
-  openaiConfig.httpAgent = httpsAgent;
+  const agent = new HttpsProxyAgent(proxyUrl);
+  openaiConfig.httpAgent = agent;
 }
 
 openai = new OpenAI(openaiConfig);
@@ -46,7 +45,9 @@ const SUBSCRIPTION_PLANS = {
     '12_months': { title: 'Loomy Pro (1 год)', price: 1000, months: 12 },
 };
 
+// === КОНСТАНТЫ ДЛЯ ОБРАБОТКИ ТЕКСТА (ИСПРАВЛЕНО) ===
 const GREETINGS = ['привет', 'здравствуйте', 'ку', 'хай', 'hello', 'hi', 'салам', 'добрый день', 'добрый вечер', 'доброе утро', 'start', '/start'];
+
 
 // === КЛАВИАТУРА ВАЛЮТ ===
 const getCurrencyMenu = () => Markup.inlineKeyboard([
@@ -106,12 +107,13 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
 
 // --- GEMINI HELPER (Для советов) ---
 const getGeminiAdvice = async (transactions, currency) => {
-    if (!geminiKey) return "Для советов нужен ключ Gemini API.";
+    if (!geminiKey) return "Пожалуйста, добавьте GEMINI_API_KEY в настройки сервера, чтобы получать советы.";
 
-    // Подготовка данных
+    // Готовим данные для AI
     const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
     const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
     
+    // Топ 3 категории расходов
     const categories = {};
     transactions.filter(t => t.type === 'expense').forEach(t => {
         categories[t.category] = (categories[t.category] || 0) + t.amount;
@@ -119,38 +121,33 @@ const getGeminiAdvice = async (transactions, currency) => {
     const topCats = Object.entries(categories)
         .sort(([,a], [,b]) => b - a)
         .slice(0, 3)
-        .map(([name, val]) => `${name} (${val})`)
+        .map(([name, amount]) => `${name}: ${amount}`)
         .join(', ');
 
     const prompt = `
       Ты — финансовый помощник Loomy.
-      Данные за месяц (${currency}):
+      Данные пользователя за месяц (${currency}):
       Доходы: ${totalIncome}
       Расходы: ${totalExpense}
       Топ траты: ${topCats}.
       
-      Дай ОДИН короткий, полезный совет (макс 20 слов).
-      Используй "Ты". Отвечай на русском.
+      Дай ОДИН короткий, полезный и немного дерзкий совет (максимум 2 предложения).
+      Используй эмодзи. Не будь занудой.
+      Если трат мало, просто похвали или пошути.
+      Отвечай на русском языке.
     `;
 
     try {
-        // Используем прокси агент, если он есть, так как Gemini блокирует РФ
-        const axiosConfig = { timeout: 15000 };
-        if (httpsAgent) {
-            axiosConfig.httpsAgent = httpsAgent;
-            axiosConfig.proxy = false;
-        }
-
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`;
         
         const response = await axios.post(url, {
             contents: [{ parts: [{ text: prompt }] }]
-        }, axiosConfig);
+        }, { timeout: 10000 });
 
-        return response.data?.candidates?.[0]?.content?.parts?.[0]?.text || "Космос молчит ✨";
+        return response.data?.candidates?.[0]?.content?.parts?.[0]?.text || "Звезды сегодня молчат ✨";
     } catch (e) {
-        console.error("Gemini Error:", e.message);
-        return "Не удалось получить совет (ошибка сети).";
+        console.error("Gemini Advice Error:", e.message);
+        return "Не удалось получить совет. Проверьте ключ Gemini.";
     }
 };
 
@@ -287,7 +284,7 @@ bot.on('text', async (ctx) => {
 
   } catch (e) {
     console.error(e);
-    ctx.reply(`❌ Ошибка AI: ${e.message}`);
+    ctx.reply(`❌ Ошибка: ${e.message}`);
   }
 });
 
@@ -311,7 +308,13 @@ app.get('/user/me', async (req, res) => {
     if (!userId) return res.status(401).json({ error: 'Auth' });
     const user = await prisma.user.findUnique({ where: { id: userId } });
     const sub = await checkSubscription(userId);
-    const safeUser = { ...user, telegramId: user.telegramId.toString(), proExpiresAt: user.proExpiresAt, isPro: sub.isPro };
+    
+    const safeUser = {
+        ...user,
+        telegramId: user.telegramId.toString(),
+        proExpiresAt: user.proExpiresAt,
+        isPro: sub.isPro
+    };
     res.json(safeUser);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -351,8 +354,15 @@ app.get('/ai/advice', async (req, res) => {
         if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
         const user = await prisma.user.findUnique({ where: { id: userId } });
+        
+        // Берем транзакции за текущий месяц
         const now = new Date();
-        const transactions = await prisma.transaction.findMany({ where: { userId: userId, date: { gte: startOfMonth(now) } } });
+        const transactions = await prisma.transaction.findMany({
+            where: { 
+                userId: userId, 
+                date: { gte: startOfMonth(now), lte: endOfMonth(now) } 
+            }
+        });
 
         const advice = await getGeminiAdvice(transactions, user.currency);
         res.json({ advice });
