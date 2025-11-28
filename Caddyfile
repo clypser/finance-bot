@@ -1,0 +1,12 @@
+{
+    email youremail@gmail.com
+    auto_https on
+}
+
+loomybot.ru {
+    root * /srv
+    file_server
+    try_files {path} /index.html
+    encode gzip zstd
+    tls youremail@gmail.com
+}
