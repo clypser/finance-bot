@@ -1,5 +1,10 @@
+{
+    email youremail@gmail.com
+}
+
 loomybot.ru {
     root * /srv
     file_server
-    encode gzip zstd
+    try_files {path} /index.html
+    encode gzip
 }
