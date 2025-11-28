@@ -3,7 +3,7 @@ const { Telegraf, Markup } = require('telegraf');
 const { OpenAI } = require('openai');
 const { PrismaClient } = require('@prisma/client');
 const cors = require('cors');
-const { HttpsProxyAgent } = require('https-proxy-agent');
+// const { HttpsProxyAgent } = require('https-proxy-agent'); // УДАЛЕНО!
 const { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, addMonths } = require('date-fns');
 
 const app = express();
@@ -11,26 +11,20 @@ const prisma = new PrismaClient();
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
 // === ЛОГ ЗАПУСКА ===
-console.log("🚀 Server restarting... DEBUG MODE: Show Real Errors");
+console.log("🚀 Server restarting... CRITICAL FIX: Direct Connect (No Proxy)");
 
 // === НАСТРОЙКИ ===
 const apiKey = process.env.OPENAI_API_KEY;
-const proxyUrl = process.env.PROXY_URL; 
-const baseURL = process.env.OPENAI_BASE_URL;
+// const proxyUrl = process.env.PROXY_URL; // УДАЛЕНО!
+// const baseURL = process.env.OPENAI_BASE_URL; // УДАЛЕНО!
 
 let openai;
 
 const openaiConfig = {
   apiKey: apiKey || "",
-  baseURL: baseURL || undefined
 };
 
-if (proxyUrl) {
-  console.log(`🌐 Using Proxy: ${proxyUrl}`);
-  const agent = new HttpsProxyAgent(proxyUrl);
-  openaiConfig.httpAgent = agent;
-}
-
+// Прокси удален, подключаемся напрямую!
 openai = new OpenAI(openaiConfig);
 
 app.use(cors());
@@ -83,14 +77,14 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
     cleanText = cleanText.replace(/(\d+)\s*(m|м|млн)/g, (match, p1) => p1 + '000000');
     cleanText = cleanText.replace(/(\d)\s+(\d)/g, '$1$2'); // Убираем пробелы (10 000 -> 10000)
 
-    console.log(`🔍 Sending to OpenAI: "${cleanText}" via ${proxyUrl ? 'Proxy' : 'Direct'}`);
+    console.log(`🔍 Sending to OpenAI: "${cleanText}" (Attempting Direct Connection)`);
 
     const prompt = `
       Analyze transaction: "${cleanText}".
       User Default Currency: ${userCurrency}.
       
       RULES: 
-      1. Extract Amount (number). Example: "200000" -> 200000.
+      1. Extract Amount (number). 
       2. Extract Currency (string). IF not in text, use "${userCurrency}".
       3. Extract Category (string, Russian).
       4. Determine Type ("income"|"expense").
@@ -102,37 +96,34 @@ const analyzeText = async (text, userCurrency = 'UZS') => {
       messages: [{ role: "user", content: prompt }],
       model: "gpt-4o", 
       response_format: { type: "json_object" },
+      // Увеличим таймаут, чтобы избежать обрыва связи
+      timeout: 15000, 
       temperature: 0.1 
     });
 
     return JSON.parse(completion.choices[0].message.content);
   } catch (e) {
-    // ВАЖНО: Мы пробрасываем ошибку выше, чтобы бот сообщил о ней пользователю
     console.error("AI Error Details:", e);
-    throw e;
+    // Теперь бот покажет, что именно сломалось
+    throw e; 
   }
 };
 
-// --- BOT LOGIC ---
+// --- BOT LOGIC (Без изменений, но с новой логикой AI) ---
 const checkSubscription = async (userId) => {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) return { isPro: false, canAdd: false, remaining: 0 };
 
   let isPro = user.isPro;
   if (isPro && user.proExpiresAt && new Date() > user.proExpiresAt) {
-      await prisma.user.update({
-          where: { id: userId },
-          data: { isPro: false, proExpiresAt: null }
-      });
+      await prisma.user.update({ where: { id: userId }, data: { isPro: false, proExpiresAt: null } });
       isPro = false;
   }
 
   if (isPro) return { isPro: true, canAdd: true, remaining: 9999, expiresAt: user.proExpiresAt };
 
   const weekAgo = subDays(new Date(), 7);
-  const count = await prisma.transaction.count({
-      where: { userId: userId, date: { gte: weekAgo } }
-  });
+  const count = await prisma.transaction.count({ where: { userId: userId, date: { gte: weekAgo } } });
 
   const LIMIT = 50;
   return { isPro: false, canAdd: count < LIMIT, remaining: Math.max(0, LIMIT - count), expiresAt: null };
@@ -216,7 +207,10 @@ bot.on('text', async (ctx) => {
 
     const result = await analyzeText(ctx.message.text, user.currency || 'UZS');
     
-    if (!result || !result.amount) return ctx.reply('⚠️ AI не нашел сумму в сообщении.');
+    if (!result || !result.amount) {
+        // Мы возвращаем AI-ошибку, чтобы вы увидели, почему именно он не понял
+        throw new Error("AI did not return amount."); 
+    }
 
     await prisma.transaction.create({
       data: {
