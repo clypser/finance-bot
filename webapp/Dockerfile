@@ -10,8 +10,10 @@ RUN npm run build
 
 # Stage 2 — Serve with Caddy
 FROM caddy:2-alpine
-
 WORKDIR /srv
 
+# Копируем билд фронтенда
 COPY --from=builder /app/dist /srv
+
+# Копируем наш Caddyfile
 COPY Caddyfile /etc/caddy/Caddyfile

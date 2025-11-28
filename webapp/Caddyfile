@@ -1,0 +1,5 @@
+loomybot.ru {
+    root * /srv
+    file_server
+    encode gzip zstd
+}
