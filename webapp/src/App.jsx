@@ -1,15 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Wallet, PieChart as PieIcon, Plus, ArrowUpRight, ArrowDownLeft, Target, Crown, X, CreditCard, Banknote, BarChart3, ChevronRight, Trash2, Calendar, FileText, Loader2, User, Zap, LogOut, Star } from 'lucide-react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { Wallet, PieChart as PieIcon, Plus, ArrowUpRight, ArrowDownLeft, Target, Crown, X, CreditCard, Banknote, BarChart3, ChevronRight, Trash2, User, LogOut, Star, Zap } from 'lucide-react';
+import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 
 const API_URL = ''; 
 
-// === СТИЛИ ДЛЯ АНИМАЦИИ ===
+// === СТИЛИ ===
 const shimmerStyle = `
-  @keyframes shimmer {
-    0% { background-position: 100% 0; }
-    100% { background-position: -100% 0; }
-  }
+  @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
   .animate-shimmer {
     background: linear-gradient(90deg, #FACC15 0%, #FEF08A 50%, #EAB308 100%);
     background-size: 200% 100%;
@@ -17,39 +14,11 @@ const shimmerStyle = `
   }
 `;
 
-// === СПИСКИ КАТЕГОРИЙ ===
-const EXPENSE_CATEGORIES = [
-  'Продукты', 'Еда вне дома', 'Такси', 'Транспорт', 'Дом', 
-  'ЖКУ', 'Связь', 'Здоровье', 'Красота', 'Спорт', 
-  'Одежда', 'Техника', 'Развлечения', 'Подписки', 
-  'Образование', 'Подарки', 'Кредиты', 'Прочее'
-];
+const EXPENSE_CATEGORIES = ['Продукты', 'Еда вне дома', 'Такси', 'Транспорт', 'Дом', 'ЖКУ', 'Связь', 'Здоровье', 'Красота', 'Спорт', 'Одежда', 'Техника', 'Развлечения', 'Подписки', 'Образование', 'Подарки', 'Кредиты', 'Прочее'];
+const INCOME_CATEGORIES = ['Зарплата', 'Аванс', 'Премия', 'Стипендия', 'Фриланс', 'Бизнес', 'Дивиденды', 'Вклады', 'Кэшбэк', 'Подарки', 'Возврат долга', 'Прочее'];
 
-const INCOME_CATEGORIES = [
-  'Зарплата', 'Аванс', 'Премия', 'Стипендия', 
-  'Фриланс', 'Бизнес', 'Дивиденды', 'Вклады', 
-  'Кэшбэк', 'Подарки', 'Возврат долга', 'Прочее'
-];
+const ErrorBoundary = ({ children }) => children;
 
-// === КОМПОНЕНТ ДЛЯ ОТЛОВА ОШИБОК ===
-class ErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false };
-  }
-  static getDerivedStateFromError(error) {
-    return { hasError: true };
-  }
-  componentDidCatch(error, errorInfo) {
-    console.error("React Error:", error, errorInfo);
-  }
-  render() {
-    if (this.state.hasError) return <div className="p-4 text-red-500 text-center">Что-то пошло не так. Пожалуйста, перезагрузите.</div>;
-    return this.props.children;
-  }
-}
-
-// === ВЫНЕСЕННЫЙ КОМПОНЕНТ МОДАЛКИ ===
 const AddModal = ({ isOpen, onClose, onAdd }) => {
   const [newAmount, setNewAmount] = useState('');
   const [newType, setNewType] = useState('expense');
@@ -57,32 +26,13 @@ const AddModal = ({ isOpen, onClose, onAdd }) => {
   const [newDescription, setNewDescription] = useState('');
 
   useEffect(() => {
-      if (isOpen) {
-          setNewAmount('');
-          setNewDescription('');
-          setNewType('expense');
-          setNewCategory(EXPENSE_CATEGORIES[0]);
-      }
+      if (isOpen) { setNewAmount(''); setNewDescription(''); setNewType('expense'); setNewCategory(EXPENSE_CATEGORIES[0]); }
   }, [isOpen]);
 
-  const handleTypeChange = (type) => {
-      setNewType(type);
-      setNewCategory(type === 'expense' ? EXPENSE_CATEGORIES[0] : INCOME_CATEGORIES[0]);
-  };
-
-  const handleSubmit = (e) => {
-      e.preventDefault();
-      onAdd({ 
-          amount: newAmount, 
-          category: newCategory, 
-          type: newType, 
-          description: newDescription 
-      });
-  };
+  const handleTypeChange = (type) => { setNewType(type); setNewCategory(type === 'expense' ? EXPENSE_CATEGORIES[0] : INCOME_CATEGORIES[0]); };
+  const handleSubmit = (e) => { e.preventDefault(); if (!newAmount) return; onAdd({ amount: newAmount, category: newCategory, type: newType, description: newDescription }); };
 
   if (!isOpen) return null;
-
-  const currentCategories = newType === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
 
   return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
@@ -91,68 +41,26 @@ const AddModal = ({ isOpen, onClose, onAdd }) => {
                   <h3 className="text-xl font-bold text-white">Новая запись</h3>
                   <button onClick={onClose} className="p-1 hover:bg-white/10 rounded-full transition-colors"><X className="text-gray-500" /></button>
               </div>
-              
               <form onSubmit={handleSubmit} className="space-y-5">
-                  <div>
-                      <label className="text-gray-500 text-xs uppercase font-bold ml-1">Тип</label>
-                      <div className="flex bg-black rounded-xl p-1 mt-1 border border-white/5">
-                          <button type="button" onClick={() => handleTypeChange('expense')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newType === 'expense' ? 'bg-white text-black' : 'text-gray-500'}`}>Расход</button>
-                          <button type="button" onClick={() => handleTypeChange('income')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newType === 'income' ? 'bg-white text-black' : 'text-gray-500'}`}>Доход</button>
-                      </div>
+                  <div className="bg-black p-1 rounded-xl border border-white/10 flex">
+                      <button type="button" onClick={() => handleTypeChange('expense')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${newType === 'expense' ? 'bg-white text-black' : 'text-gray-500'}`}>Расход</button>
+                      <button type="button" onClick={() => handleTypeChange('income')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${newType === 'income' ? 'bg-white text-black' : 'text-gray-500'}`}>Доход</button>
                   </div>
-
-                  <div>
-                      <label className="text-gray-500 text-xs uppercase font-bold ml-1">Сумма</label>
-                      <input 
-                          type="number" 
-                          value={newAmount}
-                          onChange={(e) => setNewAmount(e.target.value)}
-                          placeholder="0"
-                          className="w-full bg-black border border-white/5 rounded-xl p-4 text-white text-2xl font-bold focus:border-green-500 outline-none transition-colors"
-                          required
-                          autoFocus
-                      />
+                  <input type="number" value={newAmount} onChange={(e) => setNewAmount(e.target.value)} placeholder="0" className="w-full bg-black border border-white/10 rounded-xl p-4 text-white text-2xl font-bold outline-none" required autoFocus />
+                  <div className="relative">
+                      <select value={newCategory} onChange={(e) => setNewCategory(e.target.value)} className="w-full bg-black border border-white/10 rounded-xl p-4 text-white font-medium outline-none appearance-none pr-10">
+                          {(newType === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES).map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                      </select>
+                      <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 rotate-90 text-gray-500" size={20} />
                   </div>
-
-                  <div>
-                      <label className="text-gray-500 text-xs uppercase font-bold ml-1">Категория</label>
-                      <div className="relative">
-                          <select 
-                              value={newCategory}
-                              onChange={(e) => setNewCategory(e.target.value)}
-                              className="w-full bg-black border border-white/5 rounded-xl p-4 text-white font-medium outline-none appearance-none pr-10"
-                          >
-                              {currentCategories.map(cat => (
-                                  <option key={cat} value={cat}>{cat}</option>
-                              ))}
-                          </select>
-                          <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
-                              <ChevronRight className="rotate-90" size={20} />
-                          </div>
-                      </div>
-                  </div>
-
-                  <div>
-                      <label className="text-gray-500 text-xs uppercase font-bold ml-1">Комментарий</label>
-                      <input 
-                          type="text" 
-                          value={newDescription}
-                          onChange={(e) => setNewDescription(e.target.value)}
-                          placeholder={newType === 'expense' ? "Например: обед в офисе" : "Например: аванс за проект"}
-                          className="w-full bg-black border border-white/5 rounded-xl p-4 text-white font-medium focus:border-green-500 outline-none transition-colors"
-                      />
-                  </div>
-
-                  <button type="submit" className="w-full bg-[#00E08F] hover:bg-[#00c980] text-black font-extrabold text-lg py-4 rounded-[20px] mt-4 shadow-[0_4px_14px_0_rgba(0,224,143,0.39)] transition-shadow">
-                      Сохранить
-                  </button>
+                  <input type="text" value={newDescription} onChange={(e) => setNewDescription(e.target.value)} placeholder="Комментарий..." className="w-full bg-black border border-white/10 rounded-xl p-4 text-white font-medium outline-none" />
+                  <button type="submit" className="w-full bg-[#00E08F] hover:bg-[#00c980] text-black font-extrabold text-lg py-4 rounded-[20px] mt-2">Сохранить</button>
               </form>
           </div>
       </div>
   );
 };
 
-// --- ЭКРАН ПОДПИСКИ ---
 const SubscriptionView = ({ onBack, user, onBuy }) => {
     const [selectedPlan, setSelectedPlan] = useState('1_month');
     const plans = [
@@ -196,7 +104,6 @@ const SubscriptionView = ({ onBack, user, onBuy }) => {
     );
 };
 
-// --- ЭКРАН ПРОФИЛЯ ---
 const ProfileView = ({ user, onBack, onOpenSub, onClearData, onDeleteAccount, onCurrencyChange }) => {
     const currencies = ['UZS', 'USD', 'RUB', 'KZT', 'EUR'];
     return (
@@ -207,14 +114,12 @@ const ProfileView = ({ user, onBack, onOpenSub, onClearData, onDeleteAccount, on
             </div>
             <div className="bg-[#111111] p-5 rounded-[24px] border border-white/10 flex items-center justify-between mb-6">
                 <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-gray-800 flex items-center justify-center text-2xl overflow-hidden border border-white/10">
-                         {/* Аватарка пользователя (если есть) или эмодзи */}
+                    <div className="w-14 h-14 rounded-full bg-gray-800 flex items-center justify-center text-2xl overflow-hidden border border-white/10">
                          {user.photoUrl ? <img src={user.photoUrl} alt="User" className="w-full h-full object-cover" /> : '😎'}
                     </div>
                     <div>
-                        {/* Имя и юзернейм из пропса user */}
                         <h3 className="text-white font-bold text-lg">{user.firstName || 'Пользователь'}</h3>
-                        <p className="text-gray-500 text-xs">@{user.username || 'username'}</p>
+                        <p className="text-gray-500 text-sm">@{user.username || 'user'}</p>
                     </div>
                 </div>
                 <div onClick={onOpenSub} className={`cursor-pointer px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1 border ${user.isPro ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-white/5 text-gray-400 border-white/10'}`}>
@@ -247,7 +152,7 @@ const MainApp = () => {
   const [activeTab, setActiveTab] = useState('stats');
   const [period, setPeriod] = useState('month');
   const [data, setData] = useState({ transactions: [], chartData: [], total: 0 });
-  const [user, setUser] = useState({ currency: 'UZS', firstName: 'User', username: '', isPro: false });
+  const [user, setUser] = useState({ currency: 'UZS', firstName: 'Пользователь', username: '', isPro: false, photoUrl: null });
   const [loading, setLoading] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [limitRemaining, setLimitRemaining] = useState(50);
@@ -260,13 +165,13 @@ const MainApp = () => {
         tg.setHeaderColor('#000000'); 
         tg.setBackgroundColor('#000000'); 
         
-        // Сразу обновляем данные пользователя из Telegram
         if (tg.initDataUnsafe?.user) {
+            const u = tg.initDataUnsafe.user;
             setUser(prev => ({
                 ...prev,
-                firstName: tg.initDataUnsafe.user.first_name,
-                username: tg.initDataUnsafe.user.username,
-                photoUrl: tg.initDataUnsafe.user.photo_url 
+                firstName: u.first_name || 'Пользователь',
+                username: u.username || '',
+                photoUrl: u.photo_url || null
             }));
         }
     }
@@ -285,8 +190,10 @@ const MainApp = () => {
               setUser(prev => ({
                   ...prev,
                   ...u,
-                  firstName: u.firstName || tgUser?.first_name || 'User',
-                  username: u.username || tgUser?.username || ''
+                  // Приоритет: если сервер вернул null, берем из Telegram, иначе оставляем старое
+                  firstName: u.firstName || tgUser?.first_name || prev.firstName,
+                  username: u.username || tgUser?.username || prev.username,
+                  photoUrl: tgUser?.photo_url || prev.photoUrl // Фото берем всегда из ТГ, так как сервер его может не знать
               }));
               localStorage.setItem('userCurrency', u.currency);
           }
@@ -340,7 +247,7 @@ const MainApp = () => {
                    <button className="text-gray-500 hover:text-white p-1" onClick={() => window.Telegram?.WebApp?.close()}><X size={24} /></button>
                    <h1 className="text-lg font-bold text-white tracking-wide">Loomy AI</h1>
                    <button onClick={() => setView('profile')} className="w-9 h-9 rounded-full bg-[#111111] flex items-center justify-center text-xs overflow-hidden border border-white/10 hover:border-white/30 transition-all">
-                       {user.isPro ? <Crown size={16} className="text-[#00E08F]" fill="currentColor" /> : <User size={18} className="text-gray-400" />}
+                       {user.photoUrl ? <img src={user.photoUrl} alt="User" className="w-full h-full object-cover" /> : (user.isPro ? <Crown size={16} className="text-[#00E08F]" fill="currentColor" /> : <User size={18} className="text-gray-400" />)}
                    </button>
                </div>
 
@@ -366,7 +273,6 @@ const MainApp = () => {
                    <h2 className="text-[40px] font-black text-white tracking-tighter">{user.currency} {(data.transactions.reduce((acc, t) => acc + (t.type === 'income' ? t.amount : -t.amount), 0)).toLocaleString()}</h2>
                </div>
                
-               {/* Navigation Grid */}
                <div className="grid grid-cols-2 gap-4">
                    <button onClick={() => setActiveTab('list')} className="bg-[#111111] rounded-[28px] p-5 flex flex-col items-center justify-center gap-4 border border-white/10 active:bg-[#1a1a1a] transition-all h-36">
                        <div className="w-14 h-14 rounded-[20px] flex items-center justify-center bg-black border border-white/5 shadow-[0_0_20px_rgba(34,197,94,0.1)]"><Wallet className="text-green-500" size={28} /></div>
